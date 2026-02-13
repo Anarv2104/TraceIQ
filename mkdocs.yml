@@ -1,0 +1,62 @@
+site_name: TraceIQ Documentation
+site_description: Measure AI-to-AI influence in multi-agent systems
+site_url: https://Anarv2104.github.io/TraceIQ
+
+repo_name: Anarv2104/TraceIQ
+repo_url: https://github.com/Anarv2104/TraceIQ
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - toc.follow
+    - content.code.copy
+
+plugins:
+  - search
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - tables
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: installation.md
+    - Quick Start: quickstart.md
+  - User Guide:
+    - Understanding Metrics: metrics.md
+    - CLI Reference: cli.md
+    - Examples: examples.md
+  - API Reference: api/index.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Anarv2104/TraceIQ
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/traceiq/
