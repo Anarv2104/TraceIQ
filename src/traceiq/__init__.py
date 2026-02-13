@@ -3,7 +3,7 @@
 from traceiq.models import InteractionEvent, ScoreResult, SummaryReport, TrackerConfig
 from traceiq.tracker import InfluenceTracker
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "InfluenceTracker",

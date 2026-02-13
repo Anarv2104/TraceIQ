@@ -40,7 +40,8 @@ class TestSQLiteStorage:
             event_id=uuid4(),
             sender_id="agent_a",
             receiver_id="agent_b",
-            content="Hello world",
+            sender_content="Hello world",
+            receiver_content="Hi there",
             timestamp=datetime.now(timezone.utc),
             metadata={"key": "value"},
         )
@@ -52,7 +53,8 @@ class TestSQLiteStorage:
         assert retrieved.event_id == event.event_id
         assert retrieved.sender_id == event.sender_id
         assert retrieved.receiver_id == event.receiver_id
-        assert retrieved.content == event.content
+        assert retrieved.sender_content == event.sender_content
+        assert retrieved.receiver_content == event.receiver_content
         assert retrieved.metadata == event.metadata
 
     def test_store_and_get_score(self, sqlite_storage: SQLiteStorage) -> None:
@@ -87,7 +89,8 @@ class TestSQLiteStorage:
             event = InteractionEvent(
                 sender_id="sender_a" if i % 2 == 0 else "sender_b",
                 receiver_id="receiver",
-                content=f"Message {i}",
+                sender_content=f"Message {i}",
+                receiver_content=f"Response {i}",
             )
             sqlite_storage.store_event(event)
 
@@ -103,7 +106,8 @@ class TestSQLiteStorage:
             event = InteractionEvent(
                 sender_id="sender",
                 receiver_id="receiver_a" if i < 3 else "receiver_b",
-                content=f"Message {i}",
+                sender_content=f"Message {i}",
+                receiver_content=f"Response {i}",
             )
             sqlite_storage.store_event(event)
 
@@ -116,7 +120,8 @@ class TestSQLiteStorage:
             event = InteractionEvent(
                 sender_id=f"sender_{i}",
                 receiver_id=f"receiver_{i}",
-                content=f"Message {i}",
+                sender_content=f"Message {i}",
+                receiver_content=f"Response {i}",
             )
             sqlite_storage.store_event(event)
 
@@ -149,7 +154,8 @@ class TestSQLiteStorage:
             event = InteractionEvent(
                 sender_id="sender",
                 receiver_id="receiver",
-                content=f"Message {i}",
+                sender_content=f"Message {i}",
+                receiver_content=f"Response {i}",
                 timestamp=base_time + timedelta(minutes=i),
             )
             sqlite_storage.store_event(event)
@@ -158,9 +164,9 @@ class TestSQLiteStorage:
         assert len(recent) == 3
 
         # Should be in descending timestamp order
-        assert "Message 9" in recent[0].content
-        assert "Message 8" in recent[1].content
-        assert "Message 7" in recent[2].content
+        assert "Message 9" in recent[0].sender_content
+        assert "Message 8" in recent[1].sender_content
+        assert "Message 7" in recent[2].sender_content
 
     def test_upsert_event(self, sqlite_storage: SQLiteStorage) -> None:
         """Test that storing an event with same ID updates it."""
@@ -170,7 +176,8 @@ class TestSQLiteStorage:
             event_id=event_id,
             sender_id="sender",
             receiver_id="receiver",
-            content="Original content",
+            sender_content="Original content",
+            receiver_content="Original response",
         )
         sqlite_storage.store_event(event1)
 
@@ -178,13 +185,15 @@ class TestSQLiteStorage:
             event_id=event_id,
             sender_id="sender",
             receiver_id="receiver",
-            content="Updated content",
+            sender_content="Updated content",
+            receiver_content="Updated response",
         )
         sqlite_storage.store_event(event2)
 
         retrieved = sqlite_storage.get_event(event_id)
         assert retrieved is not None
-        assert retrieved.content == "Updated content"
+        assert retrieved.sender_content == "Updated content"
+        assert retrieved.receiver_content == "Updated response"
 
     def test_persistence_across_connections(self, tmp_path: Path) -> None:
         """Test that data persists after closing and reopening."""
@@ -195,7 +204,8 @@ class TestSQLiteStorage:
         event = InteractionEvent(
             sender_id="sender",
             receiver_id="receiver",
-            content="Persistent message",
+            sender_content="Persistent message",
+            receiver_content="Persistent response",
         )
         sqlite_storage_event_id = event.event_id
         storage1.store_event(event)
@@ -207,4 +217,5 @@ class TestSQLiteStorage:
         storage2.close()
 
         assert retrieved is not None
-        assert retrieved.content == "Persistent message"
+        assert retrieved.sender_content == "Persistent message"
+        assert retrieved.receiver_content == "Persistent response"

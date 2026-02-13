@@ -92,7 +92,8 @@ def sample_events() -> list[InteractionEvent]:
                 event_id=uuid4(),
                 sender_id=f"agent_{i % 3}",
                 receiver_id=f"agent_{(i + 1) % 3}",
-                content=f"Message {i} from sender",
+                sender_content=f"Message {i} from sender",
+                receiver_content=f"Response {i} from receiver",
                 timestamp=base_time + timedelta(minutes=i),
                 metadata={"index": i},
             )

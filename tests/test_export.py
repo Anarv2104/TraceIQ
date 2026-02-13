@@ -38,7 +38,8 @@ class TestExportCSV:
         assert len(rows) == len(sample_events)
         assert rows[0]["sender_id"] == sample_events[0].sender_id
         assert rows[0]["receiver_id"] == sample_events[0].receiver_id
-        assert rows[0]["content"] == sample_events[0].content
+        assert rows[0]["sender_content"] == sample_events[0].sender_content
+        assert rows[0]["receiver_content"] == sample_events[0].receiver_content
 
     def test_export_scores_csv(
         self, sample_scores: list[ScoreResult], tmp_path: Path

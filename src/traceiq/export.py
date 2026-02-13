@@ -22,17 +22,28 @@ def export_events_csv(
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(
-            ["event_id", "sender_id", "receiver_id", "content", "timestamp", "metadata"]
+            [
+                "event_id",
+                "sender_id",
+                "receiver_id",
+                "sender_content",
+                "receiver_content",
+                "timestamp",
+                "metadata",
+            ]
         )
         for event in events:
-            writer.writerow([
-                str(event.event_id),
-                event.sender_id,
-                event.receiver_id,
-                event.content,
-                event.timestamp.isoformat(),
-                json.dumps(event.metadata),
-            ])
+            writer.writerow(
+                [
+                    str(event.event_id),
+                    event.sender_id,
+                    event.receiver_id,
+                    event.sender_content,
+                    event.receiver_content,
+                    event.timestamp.isoformat(),
+                    json.dumps(event.metadata),
+                ]
+            )
 
 
 def export_scores_csv(
@@ -45,23 +56,27 @@ def export_scores_csv(
 
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "event_id",
-            "influence_score",
-            "drift_delta",
-            "receiver_baseline_drift",
-            "flags",
-            "cold_start",
-        ])
+        writer.writerow(
+            [
+                "event_id",
+                "influence_score",
+                "drift_delta",
+                "receiver_baseline_drift",
+                "flags",
+                "cold_start",
+            ]
+        )
         for score in scores:
-            writer.writerow([
-                str(score.event_id),
-                score.influence_score,
-                score.drift_delta,
-                score.receiver_baseline_drift,
-                ",".join(score.flags),
-                score.cold_start,
-            ])
+            writer.writerow(
+                [
+                    str(score.event_id),
+                    score.influence_score,
+                    score.drift_delta,
+                    score.receiver_baseline_drift,
+                    ",".join(score.flags),
+                    score.cold_start,
+                ]
+            )
 
 
 def export_combined_csv(
@@ -77,34 +92,40 @@ def export_combined_csv(
 
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "event_id",
-            "sender_id",
-            "receiver_id",
-            "content",
-            "timestamp",
-            "influence_score",
-            "drift_delta",
-            "receiver_baseline_drift",
-            "flags",
-            "cold_start",
-            "metadata",
-        ])
+        writer.writerow(
+            [
+                "event_id",
+                "sender_id",
+                "receiver_id",
+                "sender_content",
+                "receiver_content",
+                "timestamp",
+                "influence_score",
+                "drift_delta",
+                "receiver_baseline_drift",
+                "flags",
+                "cold_start",
+                "metadata",
+            ]
+        )
         for event in events:
             score = score_map.get(event.event_id)
-            writer.writerow([
-                str(event.event_id),
-                event.sender_id,
-                event.receiver_id,
-                event.content,
-                event.timestamp.isoformat(),
-                score.influence_score if score else "",
-                score.drift_delta if score else "",
-                score.receiver_baseline_drift if score else "",
-                ",".join(score.flags) if score else "",
-                score.cold_start if score else "",
-                json.dumps(event.metadata),
-            ])
+            writer.writerow(
+                [
+                    str(event.event_id),
+                    event.sender_id,
+                    event.receiver_id,
+                    event.sender_content,
+                    event.receiver_content,
+                    event.timestamp.isoformat(),
+                    score.influence_score if score else "",
+                    score.drift_delta if score else "",
+                    score.receiver_baseline_drift if score else "",
+                    ",".join(score.flags) if score else "",
+                    score.cold_start if score else "",
+                    json.dumps(event.metadata),
+                ]
+            )
 
 
 def export_events_jsonl(
@@ -121,7 +142,8 @@ def export_events_jsonl(
                 "event_id": str(event.event_id),
                 "sender_id": event.sender_id,
                 "receiver_id": event.receiver_id,
-                "content": event.content,
+                "sender_content": event.sender_content,
+                "receiver_content": event.receiver_content,
                 "timestamp": event.timestamp.isoformat(),
                 "metadata": event.metadata,
             }
@@ -167,16 +189,19 @@ def export_combined_jsonl(
                 "event_id": str(event.event_id),
                 "sender_id": event.sender_id,
                 "receiver_id": event.receiver_id,
-                "content": event.content,
+                "sender_content": event.sender_content,
+                "receiver_content": event.receiver_content,
                 "timestamp": event.timestamp.isoformat(),
                 "metadata": event.metadata,
             }
             if score:
-                record.update({
-                    "influence_score": score.influence_score,
-                    "drift_delta": score.drift_delta,
-                    "receiver_baseline_drift": score.receiver_baseline_drift,
-                    "flags": score.flags,
-                    "cold_start": score.cold_start,
-                })
+                record.update(
+                    {
+                        "influence_score": score.influence_score,
+                        "drift_delta": score.drift_delta,
+                        "receiver_baseline_drift": score.receiver_baseline_drift,
+                        "flags": score.flags,
+                        "cold_start": score.cold_start,
+                    }
+                )
             f.write(json.dumps(record) + "\n")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -15,7 +15,8 @@ class InteractionEvent(BaseModel):
     event_id: UUID = Field(default_factory=uuid4)
     sender_id: str
     receiver_id: str
-    content: str
+    sender_content: str
+    receiver_content: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -26,18 +27,18 @@ class TrackerConfig(BaseModel):
     """Configuration for the InfluenceTracker."""
 
     # Storage settings
-    storage_backend: str = "memory"  # "memory" or "sqlite"
+    storage_backend: Literal["memory", "sqlite"] = "memory"
     storage_path: str | None = None  # Path for sqlite db
 
     # Embedding settings
     embedding_model: str = "all-MiniLM-L6-v2"
-    max_content_length: int = 512
-    embedding_cache_size: int = 10000
+    max_content_length: int = Field(default=512, gt=0)
+    embedding_cache_size: int = Field(default=10000, gt=0)
 
     # Scoring settings
-    baseline_window: int = 10  # Number of recent embeddings for baseline
-    drift_threshold: float = 0.3  # Flag if drift_delta > threshold
-    influence_threshold: float = 0.5  # Flag if influence_score > threshold
+    baseline_window: int = Field(default=10, gt=0)
+    drift_threshold: float = Field(default=0.3, ge=0.0, le=2.0)
+    influence_threshold: float = Field(default=0.5, ge=-1.0, le=1.0)
 
     # Misc
     random_seed: int | None = None

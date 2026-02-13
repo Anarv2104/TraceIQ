@@ -24,6 +24,7 @@ class SQLiteStorage(StorageBackend):
         self._conn = sqlite3.connect(str(self.db_path))
         self._conn.row_factory = sqlite3.Row
         self._create_tables()
+        self._migrate_schema()
 
     def _create_tables(self) -> None:
         cursor = self._conn.cursor()
@@ -32,7 +33,8 @@ class SQLiteStorage(StorageBackend):
                 event_id TEXT PRIMARY KEY,
                 sender_id TEXT NOT NULL,
                 receiver_id TEXT NOT NULL,
-                content TEXT NOT NULL,
+                sender_content TEXT NOT NULL,
+                receiver_content TEXT NOT NULL,
                 timestamp TEXT NOT NULL,
                 metadata_json TEXT NOT NULL
             )
@@ -59,19 +61,44 @@ class SQLiteStorage(StorageBackend):
         """)
         self._conn.commit()
 
+    def _migrate_schema(self) -> None:
+        """Migrate database schema from v0.1.0 to v0.2.0."""
+        cursor = self._conn.cursor()
+        cursor.execute("PRAGMA table_info(events)")
+        columns = {row[1] for row in cursor.fetchall()}
+
+        # Check if we need to migrate from old schema (single 'content' column)
+        if "content" in columns and "sender_content" not in columns:
+            # Rename content to sender_content and add receiver_content
+            cursor.execute("ALTER TABLE events RENAME COLUMN content TO sender_content")
+            cursor.execute(
+                "ALTER TABLE events ADD COLUMN receiver_content TEXT NOT NULL DEFAULT ''"
+            )
+            self._conn.commit()
+
+    def _parse_timestamp(self, ts_str: str) -> datetime:
+        """Parse timestamp string correctly handling timezone info."""
+        dt = datetime.fromisoformat(ts_str)
+        if dt.tzinfo is None:
+            # Naive datetime - assume UTC
+            return dt.replace(tzinfo=timezone.utc)
+        # Already has timezone info - convert to UTC
+        return dt.astimezone(timezone.utc)
+
     def store_event(self, event: InteractionEvent) -> None:
         cursor = self._conn.cursor()
         cursor.execute(
             """
             INSERT OR REPLACE INTO events
-            (event_id, sender_id, receiver_id, content, timestamp, metadata_json)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (event_id, sender_id, receiver_id, sender_content, receiver_content, timestamp, metadata_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 str(event.event_id),
                 event.sender_id,
                 event.receiver_id,
-                event.content,
+                event.sender_content,
+                event.receiver_content,
                 event.timestamp.isoformat(),
                 json.dumps(event.metadata),
             ),
@@ -102,10 +129,9 @@ class SQLiteStorage(StorageBackend):
             event_id=UUID(row["event_id"]),
             sender_id=row["sender_id"],
             receiver_id=row["receiver_id"],
-            content=row["content"],
-            timestamp=datetime.fromisoformat(row["timestamp"]).replace(
-                tzinfo=timezone.utc
-            ),
+            sender_content=row["sender_content"],
+            receiver_content=row["receiver_content"],
+            timestamp=self._parse_timestamp(row["timestamp"]),
             metadata=json.loads(row["metadata_json"]),
         )
 

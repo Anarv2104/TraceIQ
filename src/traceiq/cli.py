@@ -15,7 +15,7 @@ console = Console()
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="traceiq")
+@click.version_option(version="0.2.0", prog_name="traceiq")
 def cli() -> None:
     """TraceIQ: Measure AI-to-AI influence in multi-agent systems."""
     pass

@@ -97,7 +97,9 @@ def plot_influence_heatmap(
         return
 
     # Get all unique agents
-    agents = sorted(set(matrix.keys()) | {r for senders in matrix.values() for r in senders})
+    agents = sorted(
+        set(matrix.keys()) | {r for senders in matrix.values() for r in senders}
+    )
 
     # Build numpy matrix
     n = len(agents)
@@ -130,9 +132,13 @@ def plot_influence_heatmap(
                 if data[i, j] > 0:
                     text_color = "white" if data[i, j] > 0.5 else "black"
                     ax.text(
-                        j, i, f"{data[i, j]:.2f}",
-                        ha="center", va="center",
-                        color=text_color, fontsize=8
+                        j,
+                        i,
+                        f"{data[i, j]:.2f}",
+                        ha="center",
+                        va="center",
+                        color=text_color,
+                        fontsize=8,
                     )
 
     plt.tight_layout()
@@ -281,7 +287,8 @@ def plot_influence_network(
 
     # Filter edges by weight
     edges_to_draw = [
-        (u, v) for u, v, d in G.edges(data=True)
+        (u, v)
+        for u, v, d in G.edges(data=True)
         if d.get("weight", 0) >= min_edge_weight
     ]
 
@@ -298,7 +305,9 @@ def plot_influence_network(
     # Draw nodes
     node_sizes = [300 + 100 * subgraph.degree(n) for n in subgraph.nodes()]
     nx.draw_networkx_nodes(
-        subgraph, pos, ax=ax,
+        subgraph,
+        pos,
+        ax=ax,
         node_size=node_sizes,
         node_color="lightblue",
         edgecolors="black",
@@ -310,7 +319,9 @@ def plot_influence_network(
     edge_widths = [2 + 3 * (w / max_weight) for w in edge_weights]
 
     nx.draw_networkx_edges(
-        subgraph, pos, ax=ax,
+        subgraph,
+        pos,
+        ax=ax,
         width=edge_widths,
         alpha=0.6,
         edge_color=edge_weights,

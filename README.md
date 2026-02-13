@@ -211,10 +211,13 @@ influence_score = cosine_similarity(sender_embedding, baseline_shift_vector)
 
 | Value | Interpretation |
 |-------|----------------|
-| +1.0 | Perfect positive correlation |
-| +0.5 | Strong influence |
-| 0.0 | No correlation |
-| -0.5 | Inverse correlation (receiver moved away) |
+| +1.0 | Receiver shifted strongly toward sender's semantic space |
+| +0.5 | Moderate positive correlation |
+| 0.0 | No correlation between sender and receiver's shift |
+| -0.5 | Counter-influence: receiver moved AWAY from sender |
+| -1.0 | Strong counter-influence |
+
+**Note**: Negative influence scores indicate the receiver shifted *away* from the sender's content - this is still meaningful influence, just in the opposite direction.
 
 ### Flags
 
@@ -262,8 +265,11 @@ matrix = graph.influence_matrix()
 # Top influencers by outgoing influence
 top_influencers = graph.top_influencers(n=10)
 
-# Most susceptible by incoming influence
+# Most susceptible by incoming drift (who changes behavior the most)
 most_susceptible = graph.top_susceptible(n=10)
+
+# Most influenced by incoming influence (who moves toward senders the most)
+most_influenced = graph.top_influenced(n=10)
 
 # Find influence chains from a source
 chains = graph.find_influence_chains(

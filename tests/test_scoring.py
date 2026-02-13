@@ -65,9 +65,7 @@ class TestScoringEngine:
         assert result.influence_score == 0.0
         assert result.flags == []
 
-    def test_non_cold_start_after_baseline(
-        self, scoring_engine: ScoringEngine
-    ) -> None:
+    def test_non_cold_start_after_baseline(self, scoring_engine: ScoringEngine) -> None:
         """Second event should not be cold start."""
         sender_emb = np.random.rand(384).astype(np.float32)
         receiver_emb1 = np.random.rand(384).astype(np.float32)

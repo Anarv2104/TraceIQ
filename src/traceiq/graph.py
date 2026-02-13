@@ -17,6 +17,7 @@ class InfluenceGraph:
     def __init__(self) -> None:
         self._graph = nx.DiGraph()
         self._edge_scores: dict[tuple[str, str], list[float]] = defaultdict(list)
+        self._edge_drifts: dict[tuple[str, str], list[float]] = defaultdict(list)
 
     def add_interaction(
         self,
@@ -33,17 +34,22 @@ class InfluenceGraph:
         if not self._graph.has_node(receiver):
             self._graph.add_node(receiver, type="agent")
 
-        # Track scores for this edge
+        # Track both influence scores and drift for this edge
         self._edge_scores[(sender, receiver)].append(score.influence_score)
+        self._edge_drifts[(sender, receiver)].append(score.drift_delta)
 
-        # Update edge with aggregated weight
+        # Update edge with aggregated weight (influence-based)
         avg_score = sum(self._edge_scores[(sender, receiver)]) / len(
             self._edge_scores[(sender, receiver)]
+        )
+        avg_drift = sum(self._edge_drifts[(sender, receiver)]) / len(
+            self._edge_drifts[(sender, receiver)]
         )
         self._graph.add_edge(
             sender,
             receiver,
             weight=avg_score,
+            avg_drift=avg_drift,
             interaction_count=len(self._edge_scores[(sender, receiver)]),
         )
 
@@ -77,24 +83,39 @@ class InfluenceGraph:
         for sender, _receiver, data in self._graph.edges(data=True):
             influence_sums[sender] += data.get("weight", 0.0)
 
-        sorted_agents = sorted(
-            influence_sums.items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_agents = sorted(influence_sums.items(), key=lambda x: x[1], reverse=True)
         return sorted_agents[:n]
 
     def top_susceptible(self, n: int = 10) -> list[tuple[str, float]]:
         """
         Get top N susceptible agents ranked by sum of incoming drift.
 
-        Returns list of (agent_id, total_incoming_weight).
+        Susceptibility measures how much an agent's behavior changes
+        (drifts) when receiving messages from others.
+
+        Returns list of (agent_id, total_incoming_drift).
         """
         susceptibility: dict[str, float] = defaultdict(float)
-        for _sender, receiver, data in self._graph.edges(data=True):
-            susceptibility[receiver] += data.get("weight", 0.0)
+        for (_sender, receiver), drifts in self._edge_drifts.items():
+            susceptibility[receiver] += sum(drifts)
 
-        sorted_agents = sorted(
-            susceptibility.items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_agents = sorted(susceptibility.items(), key=lambda x: x[1], reverse=True)
+        return sorted_agents[:n]
+
+    def top_influenced(self, n: int = 10) -> list[tuple[str, float]]:
+        """
+        Get top N agents ranked by sum of incoming influence weights.
+
+        This measures which agents have had their behavior most
+        correlated with sender content (i.e., moved toward senders).
+
+        Returns list of (agent_id, total_incoming_influence).
+        """
+        influenced: dict[str, float] = defaultdict(float)
+        for (_sender, receiver), scores in self._edge_scores.items():
+            influenced[receiver] += sum(scores)
+
+        sorted_agents = sorted(influenced.items(), key=lambda x: x[1], reverse=True)
         return sorted_agents[:n]
 
     def find_influence_chains(
@@ -163,8 +184,12 @@ class InfluenceGraph:
         return {
             "num_nodes": self._graph.number_of_nodes(),
             "num_edges": self._graph.number_of_edges(),
-            "density": nx.density(self._graph) if self._graph.number_of_nodes() > 0 else 0.0,
-            "is_connected": nx.is_weakly_connected(self._graph) if self._graph.number_of_nodes() > 0 else False,
+            "density": nx.density(self._graph)
+            if self._graph.number_of_nodes() > 0
+            else 0.0,
+            "is_connected": nx.is_weakly_connected(self._graph)
+            if self._graph.number_of_nodes() > 0
+            else False,
         }
 
     @property

@@ -10,13 +10,27 @@ Every piece of content (sender message, receiver response) is converted to a hig
 
 ### Baseline
 
-Each receiver maintains a "baseline" - a rolling average of their recent response embeddings. This represents their typical behavior pattern.
+Each receiver maintains a "baseline" - a rolling average of their recent response embeddings. This represents their typical response pattern.
 
 ```
 baseline = mean(last N receiver embeddings)
 ```
 
 The `baseline_window` config parameter controls N (default: 10).
+
+### What Baseline Actually Measures
+
+The baseline is a rolling average of the receiver's **response embeddings**, not their internal state or "cognition". This means:
+
+- **Drift measures**: "How different is this response from the receiver's typical responses?"
+- **Influence measures**: "Did the receiver's response pattern shift toward the sender's content?"
+
+This is **NOT**:
+- Measuring receiver "beliefs" or internal cognitive state
+- Tracking what messages the receiver received
+- A measure of what the receiver "knows"
+
+The baseline captures observable behavior (outputs) only, which is the appropriate level of analysis for external influence tracking.
 
 ## Metrics
 
@@ -52,10 +66,22 @@ influence_score = cosine_similarity(sender_embedding, baseline_shift)
 **Range**: -1.0 to 1.0
 
 **Interpretation**:
-- `+1.0`: Sender's content perfectly aligned with receiver's shift
-- `+0.5`: Strong positive correlation
-- `0.0`: No correlation between sender and receiver's change
-- `-0.5`: Sender's content inversely correlated (receiver moved away)
+
+| Value | Interpretation |
+|-------|----------------|
+| +1.0 | Receiver shifted strongly toward sender's semantic space |
+| +0.5 | Moderate positive correlation - receiver moved somewhat toward sender |
+| 0.0 | No correlation between sender's content and receiver's behavioral shift |
+| -0.5 | Counter-influence - receiver moved AWAY from sender's content |
+| -1.0 | Strong counter-influence - receiver shifted in opposite direction |
+
+**Understanding Negative Influence**:
+A negative influence score indicates that the receiver's behavior shifted *away* from the sender's semantic content. This could mean:
+- The receiver is actively resisting or countering the sender's message
+- The sender triggered a contrarian response
+- The receiver is deliberately differentiating from the sender
+
+Negative influence is still influence - it's just influence in the opposite direction.
 
 **Flag**: `high_influence` when `influence_score > influence_threshold`
 
@@ -100,13 +126,38 @@ Agents ranked by sum of outgoing influence scores:
 top_influencers = sum(influence_scores for all interactions where agent is sender)
 ```
 
+Higher scores indicate agents whose content tends to correlate with receivers shifting toward their semantic space.
+
 ### Top Susceptible
 
-Agents ranked by sum of incoming influence:
+Agents ranked by sum of incoming **drift** (not influence):
 
 ```python
-susceptibility = sum(influence_scores for all interactions where agent is receiver)
+susceptibility = sum(drift_deltas for all interactions where agent is receiver)
 ```
+
+This measures which agents show the most behavioral change when receiving messages. High susceptibility means the agent frequently deviates from their baseline behavior.
+
+**Note**: This is different from `top_influenced()`.
+
+### Top Influenced
+
+Agents ranked by sum of incoming **influence weights**:
+
+```python
+influenced = sum(influence_scores for all interactions where agent is receiver)
+```
+
+This measures which agents have had their behavior most correlated with sender content. High values indicate the agent tends to shift *toward* what senders are saying.
+
+### Susceptible vs Influenced
+
+| Metric | Measures | Question Answered |
+|--------|----------|-------------------|
+| `top_susceptible()` | Sum of incoming drift | "Who changes the most?" |
+| `top_influenced()` | Sum of incoming influence | "Who moves toward senders the most?" |
+
+An agent can be highly susceptible (behavior changes a lot) but not highly influenced (changes aren't correlated with sender content). This might indicate the agent is responding to external factors or has high internal variability.
 
 ### Influence Chains
 

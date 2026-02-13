@@ -94,7 +94,8 @@ class InfluenceTracker:
         event = InteractionEvent(
             sender_id=sender_id,
             receiver_id=receiver_id,
-            content=sender_content,
+            sender_content=sender_content,
+            receiver_content=receiver_content,
             metadata=metadata or {},
         )
 
@@ -189,8 +190,12 @@ class InfluenceTracker:
         # Score aggregates
         non_cold_scores = [s for s in scores if not s.cold_start]
         if non_cold_scores:
-            avg_drift = sum(s.drift_delta for s in non_cold_scores) / len(non_cold_scores)
-            avg_influence = sum(s.influence_score for s in non_cold_scores) / len(non_cold_scores)
+            avg_drift = sum(s.drift_delta for s in non_cold_scores) / len(
+                non_cold_scores
+            )
+            avg_influence = sum(s.influence_score for s in non_cold_scores) / len(
+                non_cold_scores
+            )
         else:
             avg_drift = 0.0
             avg_influence = 0.0
