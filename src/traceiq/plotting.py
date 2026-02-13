@@ -236,7 +236,7 @@ def plot_top_susceptible(
     colors = plt.cm.plasma([s / max(scores) if max(scores) > 0 else 0 for s in scores])
     bars = ax.barh(agents, scores, color=colors)
 
-    ax.set_xlabel("Total Incoming Influence")
+    ax.set_xlabel("Total Incoming Drift")
     ax.set_ylabel("Agent")
     ax.set_title(f"Top {len(agents)} Susceptible Agents")
     ax.invert_yaxis()

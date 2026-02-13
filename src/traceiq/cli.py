@@ -76,20 +76,45 @@ def ingest(input_file: str, db: str, mock_embedder: bool) -> None:
         storage_path=db,
     )
 
+    # Required fields for each interaction
+    required_fields = ["sender_id", "receiver_id", "sender_content", "receiver_content"]
+
+    # Parse and validate all lines first
+    interactions = []
+    errors = []
+    with open(input_file) as f:
+        for line_num, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as e:
+                errors.append(f"Line {line_num}: Invalid JSON - {e}")
+                continue
+
+            missing = [f for f in required_fields if f not in record]
+            if missing:
+                errors.append(
+                    f"Line {line_num}: Missing required field(s): {', '.join(missing)}"
+                )
+                continue
+
+            interactions.append(record)
+
+    if errors:
+        console.print("[red]Validation errors found:[/red]")
+        for err in errors:
+            console.print(f"  {err}")
+        raise SystemExit(1)
+
+    if not interactions:
+        console.print("[yellow]No interactions found in file[/yellow]")
+        return
+
+    console.print(f"Ingesting {len(interactions)} interactions...")
+
     with InfluenceTracker(config=config, use_mock_embedder=mock_embedder) as tracker:
-        interactions = []
-        with open(input_file) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    interactions.append(json.loads(line))
-
-        if not interactions:
-            console.print("[yellow]No interactions found in file[/yellow]")
-            return
-
-        console.print(f"Ingesting {len(interactions)} interactions...")
-
         results = tracker.bulk_track(interactions)
 
         high_drift = sum(1 for r in results if "high_drift" in r["flags"])

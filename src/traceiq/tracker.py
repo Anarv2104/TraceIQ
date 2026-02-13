@@ -47,7 +47,10 @@ class InfluenceTracker:
 
         # Initialize embedder
         if use_mock_embedder:
-            self._embedder = MockEmbedder(seed=self.config.random_seed)
+            self._embedder = MockEmbedder(
+                seed=self.config.random_seed,
+                max_content_length=self.config.max_content_length,
+            )
         else:
             self._embedder = SentenceTransformerEmbedder(
                 model_name=self.config.embedding_model,
@@ -99,18 +102,24 @@ class InfluenceTracker:
             metadata=metadata or {},
         )
 
-        # Compute embeddings
-        sender_embedding = self._embedder.embed(sender_content)
-        receiver_embedding = self._embedder.embed(receiver_content)
+        # Compute embeddings with truncation tracking
+        sender_result = self._embedder.embed_with_info(sender_content)
+        receiver_result = self._embedder.embed_with_info(receiver_content)
 
         # Compute scores
         score = self._scorer.compute_scores(
             event_id=event.event_id,
             sender_id=sender_id,
             receiver_id=receiver_id,
-            sender_embedding=sender_embedding,
-            receiver_embedding=receiver_embedding,
+            sender_embedding=sender_result.embedding,
+            receiver_embedding=receiver_result.embedding,
         )
+
+        # Add truncation flags if content was truncated
+        if sender_result.was_truncated:
+            score.flags.append("sender_truncated")
+        if receiver_result.was_truncated:
+            score.flags.append("receiver_truncated")
 
         # Store
         self._storage.store_event(event)

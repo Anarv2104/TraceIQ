@@ -78,12 +78,14 @@ class InfluenceGraph:
         Get top N influencers ranked by sum of outgoing influence weights.
 
         Returns list of (agent_id, total_outgoing_influence).
+        Sorted by score descending, then agent_id ascending for determinism.
         """
         influence_sums: dict[str, float] = defaultdict(float)
         for sender, _receiver, data in self._graph.edges(data=True):
             influence_sums[sender] += data.get("weight", 0.0)
 
-        sorted_agents = sorted(influence_sums.items(), key=lambda x: x[1], reverse=True)
+        # Sort by score descending, then agent_id ascending for deterministic ordering
+        sorted_agents = sorted(influence_sums.items(), key=lambda x: (-x[1], x[0]))
         return sorted_agents[:n]
 
     def top_susceptible(self, n: int = 10) -> list[tuple[str, float]]:
@@ -94,12 +96,14 @@ class InfluenceGraph:
         (drifts) when receiving messages from others.
 
         Returns list of (agent_id, total_incoming_drift).
+        Sorted by score descending, then agent_id ascending for determinism.
         """
         susceptibility: dict[str, float] = defaultdict(float)
         for (_sender, receiver), drifts in self._edge_drifts.items():
             susceptibility[receiver] += sum(drifts)
 
-        sorted_agents = sorted(susceptibility.items(), key=lambda x: x[1], reverse=True)
+        # Sort by score descending, then agent_id ascending for deterministic ordering
+        sorted_agents = sorted(susceptibility.items(), key=lambda x: (-x[1], x[0]))
         return sorted_agents[:n]
 
     def top_influenced(self, n: int = 10) -> list[tuple[str, float]]:
@@ -110,12 +114,14 @@ class InfluenceGraph:
         correlated with sender content (i.e., moved toward senders).
 
         Returns list of (agent_id, total_incoming_influence).
+        Sorted by score descending, then agent_id ascending for determinism.
         """
         influenced: dict[str, float] = defaultdict(float)
         for (_sender, receiver), scores in self._edge_scores.items():
             influenced[receiver] += sum(scores)
 
-        sorted_agents = sorted(influenced.items(), key=lambda x: x[1], reverse=True)
+        # Sort by score descending, then agent_id ascending for deterministic ordering
+        sorted_agents = sorted(influenced.items(), key=lambda x: (-x[1], x[0]))
         return sorted_agents[:n]
 
     def find_influence_chains(

@@ -145,8 +145,10 @@ def test_real_agent_conversations():
         results.append(result)
 
         flags_str = f" [{', '.join(result['flags'])}]" if result["flags"] else ""
-        print(f"Round {i+1:2d}: {conv['sender_id']:15s} -> {conv['receiver_id']:15s} | "
-              f"influence={result['influence_score']:+.3f}, drift={result['drift_delta']:.3f}{flags_str}")
+        print(
+            f"Round {i + 1:2d}: {conv['sender_id']:15s} -> {conv['receiver_id']:15s} | "
+            f"influence={result['influence_score']:+.3f}, drift={result['drift_delta']:.3f}{flags_str}"
+        )
 
     print()
     print("=" * 70)
@@ -156,7 +158,9 @@ def test_real_agent_conversations():
     summary = tracker.summary(top_n=4)
 
     print(f"\nTotal interactions: {summary.total_events}")
-    print(f"Unique agents: {summary.unique_senders} senders, {summary.unique_receivers} receivers")
+    print(
+        f"Unique agents: {summary.unique_senders} senders, {summary.unique_receivers} receivers"
+    )
     print(f"Average drift delta: {summary.avg_drift_delta:.4f}")
     print(f"Average influence score: {summary.avg_influence_score:.4f}")
     print(f"High drift events: {summary.high_drift_count}")
@@ -296,8 +300,10 @@ def test_idea_adoption():
     for conv in influence_conversations:
         result = tracker.track_event(**conv)
         flags = f" [{', '.join(result['flags'])}]" if result["flags"] else ""
-        print(f"  {conv['sender_id']} -> {conv['receiver_id']}: "
-              f"influence={result['influence_score']:+.3f}, drift={result['drift_delta']:.3f}{flags}")
+        print(
+            f"  {conv['sender_id']} -> {conv['receiver_id']}: "
+            f"influence={result['influence_score']:+.3f}, drift={result['drift_delta']:.3f}{flags}"
+        )
 
     # Phase 3: See if influenced agents spread the ideas
     print("\nPhase 3: Checking for secondary influence spread...")
@@ -326,14 +332,18 @@ def test_idea_adoption():
     for conv in secondary_conversations:
         result = tracker.track_event(**conv)
         flags = f" [{', '.join(result['flags'])}]" if result["flags"] else ""
-        print(f"  {conv['sender_id']} -> {conv['receiver_id']}: "
-              f"influence={result['influence_score']:+.3f}, drift={result['drift_delta']:.3f}{flags}")
+        print(
+            f"  {conv['sender_id']} -> {conv['receiver_id']}: "
+            f"influence={result['influence_score']:+.3f}, drift={result['drift_delta']:.3f}{flags}"
+        )
 
     print("\n" + "-" * 70)
     summary = tracker.summary()
 
     print(f"\nTotal interactions tracked: {summary.total_events}")
-    print(f"High drift events: {summary.high_drift_count} (agents significantly changed)")
+    print(
+        f"High drift events: {summary.high_drift_count} (agents significantly changed)"
+    )
     print(f"High influence events: {summary.high_influence_count}")
 
     print("\nInfluence Analysis:")

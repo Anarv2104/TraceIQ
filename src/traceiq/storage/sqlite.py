@@ -23,8 +23,8 @@ class SQLiteStorage(StorageBackend):
         self.db_path = Path(db_path)
         self._conn = sqlite3.connect(str(self.db_path))
         self._conn.row_factory = sqlite3.Row
+        self._check_schema_compatibility()
         self._create_tables()
-        self._migrate_schema()
 
     def _create_tables(self) -> None:
         cursor = self._conn.cursor()
@@ -61,20 +61,21 @@ class SQLiteStorage(StorageBackend):
         """)
         self._conn.commit()
 
-    def _migrate_schema(self) -> None:
-        """Migrate database schema from v0.1.0 to v0.2.0."""
+    def _check_schema_compatibility(self) -> None:
+        """Check database schema is compatible with v0.2.0.
+
+        Raises RuntimeError if an incompatible old schema is detected.
+        """
         cursor = self._conn.cursor()
         cursor.execute("PRAGMA table_info(events)")
         columns = {row[1] for row in cursor.fetchall()}
 
-        # Check if we need to migrate from old schema (single 'content' column)
+        # Check if old schema (single 'content' column) exists
         if "content" in columns and "sender_content" not in columns:
-            # Rename content to sender_content and add receiver_content
-            cursor.execute("ALTER TABLE events RENAME COLUMN content TO sender_content")
-            cursor.execute(
-                "ALTER TABLE events ADD COLUMN receiver_content TEXT NOT NULL DEFAULT ''"
+            raise RuntimeError(
+                "Database schema is from an older TraceIQ version and is incompatible. "
+                "Export data and re-ingest with receiver_content."
             )
-            self._conn.commit()
 
     def _parse_timestamp(self, ts_str: str) -> datetime:
         """Parse timestamp string correctly handling timezone info."""

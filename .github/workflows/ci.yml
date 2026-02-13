@@ -61,4 +61,4 @@ jobs:
       - name: Verify wheel
         run: |
           pip install dist/*.whl
-          python -c "from traceiq import InfluenceTracker; print('Import successful!')"
+          python -c "import traceiq; print(f'TraceIQ v{traceiq.__version__} import successful!')"

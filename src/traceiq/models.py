@@ -32,7 +32,7 @@ class TrackerConfig(BaseModel):
 
     # Embedding settings
     embedding_model: str = "all-MiniLM-L6-v2"
-    max_content_length: int = Field(default=512, gt=0)
+    max_content_length: int = Field(default=5000, gt=0)
     embedding_cache_size: int = Field(default=10000, gt=0)
 
     # Scoring settings

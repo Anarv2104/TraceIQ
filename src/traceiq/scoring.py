@@ -1,4 +1,27 @@
-"""Drift and influence score calculations."""
+"""Drift and influence score calculations.
+
+Baseline Definition (v1):
+    The baseline for a receiver is the rolling mean of their recent
+    receiver_content embeddings. This represents the receiver's "typical"
+    response style over the baseline_window most recent interactions.
+
+Drift Detection:
+    drift_delta = 1 - cosine_similarity(current_embedding, baseline_embedding)
+
+    Higher drift indicates the receiver deviated more from their typical
+    behavior in this response.
+
+Influence Scoring:
+    baseline_shift = baseline_after - baseline_before
+    influence_score = cosine_similarity(sender_embedding, baseline_shift)
+
+    This measures how aligned the sender's content is with the direction
+    of change in the receiver's baseline. A positive score indicates the
+    receiver's behavior shifted toward the sender's content direction.
+    Negative scores indicate counter-alignment (receiver shifted away).
+
+    Range: -1.0 to +1.0
+"""
 
 from __future__ import annotations
 

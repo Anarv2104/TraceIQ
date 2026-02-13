@@ -18,7 +18,9 @@ OUTPUT_DIR = Path(__file__).parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 
-def generate_agent_response(agent_id: str, received_content: str, infection_level: float) -> str:
+def generate_agent_response(
+    agent_id: str, received_content: str, infection_level: float
+) -> str:
     """Generate a response that may be influenced by received content."""
     base_topics = {
         "agent_0": ["weather", "sports", "cooking"],
@@ -100,7 +102,9 @@ def simulate_infection_spread(
         if sender_infection > 0.5:
             sender_content = f"{viral_idea} (Round {round_num})"
         else:
-            sender_content = f"Just regular thoughts from {sender_id} in round {round_num}."
+            sender_content = (
+                f"Just regular thoughts from {sender_id} in round {round_num}."
+            )
 
         # Update receiver's infection based on sender
         if sender_infection > 0.3:
@@ -137,7 +141,7 @@ def simulate_infection_spread(
 
     print()
     print("Simulation complete!")
-    print(f"Final infection levels:")
+    print("Final infection levels:")
     for agent_id, level in sorted(infection_levels.items()):
         bar = "█" * int(level * 20)
         print(f"  {agent_id}: {level:.2f} {bar}")
@@ -192,7 +196,7 @@ def main() -> None:
     tracker.export_jsonl(jsonl_path)
 
     print()
-    print(f"Exported data to:")
+    print("Exported data to:")
     print(f"  CSV: {csv_path}")
     print(f"  JSONL: {jsonl_path}")
 
