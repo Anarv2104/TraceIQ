@@ -5,7 +5,7 @@ All notable changes to TraceIQ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - 2024-XX-XX
+## [0.2.0] - 2026-02-16
 
 ### Added
 
@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **max_content_length default**: Increased from 512 to 5000 characters
 - **Embedding cache key**: Cache key is now based on the hash of truncated content only, not full content
 - **Schema migration**: Old databases with single `content` column now raise `RuntimeError` instead of auto-migrating
+- **Version sourcing**: Version is now read from package metadata (single source of truth in `pyproject.toml`)
 
 ### Fixed
 
@@ -30,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added detailed docstring in `scoring.py` explaining baseline definition and influence scoring algorithms
 
-## [0.1.0] - 2024-XX-XX
+## [0.1.0] - 2026-02-01
 
 ### Added
 
