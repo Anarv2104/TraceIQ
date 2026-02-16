@@ -6,9 +6,14 @@ from collections import defaultdict
 from typing import TYPE_CHECKING
 
 import networkx as nx
+import numpy as np
+
+from traceiq.metrics import build_adjacency_matrix, compute_propagation_risk
 
 if TYPE_CHECKING:
-    from traceiq.models import InteractionEvent, ScoreResult
+    from numpy.typing import NDArray
+
+    from traceiq.models import InteractionEvent, PropagationRiskResult, ScoreResult
 
 
 class InfluenceGraph:
@@ -18,6 +23,8 @@ class InfluenceGraph:
         self._graph = nx.DiGraph()
         self._edge_scores: dict[tuple[str, str], list[float]] = defaultdict(list)
         self._edge_drifts: dict[tuple[str, str], list[float]] = defaultdict(list)
+        # IEEE metrics (v0.3.0)
+        self._edge_iqx: dict[tuple[str, str], list[float]] = defaultdict(list)
 
     def add_interaction(
         self,
@@ -38,6 +45,10 @@ class InfluenceGraph:
         self._edge_scores[(sender, receiver)].append(score.influence_score)
         self._edge_drifts[(sender, receiver)].append(score.drift_delta)
 
+        # Track IQx if available (v0.3.0)
+        if score.IQx is not None:
+            self._edge_iqx[(sender, receiver)].append(score.IQx)
+
         # Update edge with aggregated weight (influence-based)
         avg_score = sum(self._edge_scores[(sender, receiver)]) / len(
             self._edge_scores[(sender, receiver)]
@@ -45,11 +56,20 @@ class InfluenceGraph:
         avg_drift = sum(self._edge_drifts[(sender, receiver)]) / len(
             self._edge_drifts[(sender, receiver)]
         )
+
+        # Compute average IQx if available
+        avg_iqx = 0.0
+        if self._edge_iqx[(sender, receiver)]:
+            avg_iqx = sum(self._edge_iqx[(sender, receiver)]) / len(
+                self._edge_iqx[(sender, receiver)]
+            )
+
         self._graph.add_edge(
             sender,
             receiver,
             weight=avg_score,
             avg_drift=avg_drift,
+            avg_iqx=avg_iqx,
             interaction_count=len(self._edge_scores[(sender, receiver)]),
         )
 
@@ -71,6 +91,15 @@ class InfluenceGraph:
             if sender not in matrix:
                 matrix[sender] = {}
             matrix[sender][receiver] = data.get("weight", 0.0)
+        return matrix
+
+    def iqx_matrix(self) -> dict[str, dict[str, float]]:
+        """Get IQx matrix as nested dict (sender -> receiver -> avg_iqx)."""
+        matrix: dict[str, dict[str, float]] = {}
+        for sender, receiver, data in self._graph.edges(data=True):
+            if sender not in matrix:
+                matrix[sender] = {}
+            matrix[sender][receiver] = data.get("avg_iqx", 0.0)
         return matrix
 
     def top_influencers(self, n: int = 10) -> list[tuple[str, float]]:
@@ -202,3 +231,134 @@ class InfluenceGraph:
     def graph(self) -> nx.DiGraph:
         """Access the underlying NetworkX graph."""
         return self._graph
+
+    # IEEE metrics methods (v0.3.0)
+
+    def build_adjacency_matrix(
+        self, weight_type: str = "iqx"
+    ) -> tuple[NDArray[np.float64], list[str]]:
+        """Build adjacency matrix from graph edges.
+
+        Args:
+            weight_type: Type of weight to use: "iqx", "influence", or "drift"
+
+        Returns:
+            Tuple of (NxN numpy array, list of agent IDs in matrix order)
+        """
+        agents = sorted(self._graph.nodes())
+        if not agents:
+            return np.array([], dtype=np.float64), []
+
+        # Get edge weights based on type
+        if weight_type == "iqx":
+            edge_weights = self.get_mean_iqx_weights()
+        elif weight_type == "drift":
+            edge_weights = {
+                edge: sum(drifts) / len(drifts)
+                for edge, drifts in self._edge_drifts.items()
+                if drifts
+            }
+        else:  # influence
+            edge_weights = {
+                edge: sum(scores) / len(scores)
+                for edge, scores in self._edge_scores.items()
+                if scores
+            }
+
+        matrix = build_adjacency_matrix(edge_weights, agents)
+        return matrix, agents
+
+    def compute_spectral_radius(self, weight_type: str = "iqx") -> float:
+        """Compute spectral radius (propagation risk) of the adjacency matrix.
+
+        Args:
+            weight_type: Type of weight to use: "iqx", "influence", or "drift"
+
+        Returns:
+            Spectral radius (largest absolute eigenvalue)
+        """
+        matrix, _ = self.build_adjacency_matrix(weight_type)
+        return compute_propagation_risk(matrix)
+
+    def compute_propagation_risk_over_time(
+        self,
+        events: list[InteractionEvent],
+        scores: list[ScoreResult],
+        window_size: int = 10,
+    ) -> list[PropagationRiskResult]:
+        """Compute propagation risk over sliding time windows.
+
+        Args:
+            events: List of events ordered by timestamp
+            scores: Corresponding scores
+            window_size: Number of events per window
+
+        Returns:
+            List of PropagationRiskResult for each window
+        """
+        from traceiq.models import PropagationRiskResult
+
+        if len(events) < window_size:
+            return []
+
+        score_map = {s.event_id: s for s in scores}
+        results: list[PropagationRiskResult] = []
+
+        # Slide window over events
+        for i in range(0, len(events) - window_size + 1, window_size // 2 or 1):
+            window_events = events[i : i + window_size]
+            window_scores = [
+                score_map[e.event_id] for e in window_events if e.event_id in score_map
+            ]
+
+            # Build temporary graph for this window
+            temp_graph = InfluenceGraph()
+            for event, score in zip(window_events, window_scores, strict=False):
+                temp_graph.add_interaction(event, score)
+
+            # Compute spectral radius
+            matrix, agents = temp_graph.build_adjacency_matrix("iqx")
+            spectral_radius = compute_propagation_risk(matrix)
+
+            results.append(
+                PropagationRiskResult(
+                    window_start=window_events[0].timestamp,
+                    window_end=window_events[-1].timestamp,
+                    spectral_radius=spectral_radius,
+                    edge_count=temp_graph._graph.number_of_edges(),
+                    agent_count=len(agents),
+                )
+            )
+
+        return results
+
+    def get_mean_iqx_weights(self) -> dict[tuple[str, str], float]:
+        """Get mean IQx for each edge.
+
+        Returns:
+            Dict mapping (sender, receiver) to mean IQx
+        """
+        return {
+            edge: sum(iqx_values) / len(iqx_values)
+            for edge, iqx_values in self._edge_iqx.items()
+            if iqx_values
+        }
+
+    def top_iqx_influencers(self, n: int = 10) -> list[tuple[str, float]]:
+        """Get top N agents ranked by sum of outgoing IQx.
+
+        Returns list of (agent_id, total_outgoing_iqx).
+        """
+        iqx_sums: dict[str, float] = defaultdict(float)
+        for (sender, _receiver), iqx_values in self._edge_iqx.items():
+            iqx_sums[sender] += sum(iqx_values)
+
+        sorted_agents = sorted(iqx_sums.items(), key=lambda x: (-x[1], x[0]))
+        return sorted_agents[:n]
+
+    def clear(self) -> None:
+        """Clear all graph data."""
+        self._graph.clear()
+        self._edge_scores.clear()
+        self._edge_drifts.clear()
+        self._edge_iqx.clear()

@@ -29,6 +29,8 @@ TraceIQ provides the tools to **detect, measure, and visualize** these influence
 |---------|-------------|
 | **Influence Scoring** | Quantify how much a sender's message correlates with a receiver's behavioral shift |
 | **Drift Detection** | Track when agents deviate from their established baseline behavior |
+| **IEEE Metrics (v0.3.0)** | IQx, RWI, Z-score anomaly detection, propagation risk |
+| **Capability Security** | Attack surface computation based on agent capabilities |
 | **Graph Analytics** | Identify top influencers, susceptible agents, and influence propagation chains |
 | **Semantic Embeddings** | Use sentence-transformers for meaning-based content comparison |
 | **Persistent Storage** | SQLite backend for long-running analysis, or in-memory for quick experiments |
@@ -174,6 +176,14 @@ traceiq export --db analysis.db -o results.csv --format csv
 traceiq plot heatmap --db analysis.db -o heatmap.png
 traceiq plot network --db analysis.db -o network.png
 traceiq plot influencers --db analysis.db -o top_influencers.png
+
+# IEEE Metrics Commands (v0.3.0)
+traceiq propagation-risk --db analysis.db
+traceiq alerts --db analysis.db --threshold 2.0
+traceiq risky-agents --db analysis.db --top-n 10
+traceiq capabilities show
+traceiq plot iqx-heatmap --db analysis.db -o iqx.png
+traceiq plot propagation-risk --db analysis.db -o pr.png
 ```
 
 ### Input File Format
@@ -224,6 +234,61 @@ influence_score = cosine_similarity(sender_embedding, baseline_shift_vector)
 - `high_drift`: Triggered when `drift_delta > drift_threshold` (default: 0.3)
 - `high_influence`: Triggered when `influence_score > influence_threshold` (default: 0.5)
 - `cold_start`: First interaction for a receiver (no baseline yet)
+- `anomaly_alert`: Z-score exceeds anomaly threshold (v0.3.0)
+
+## IEEE Metrics (v0.3.0)
+
+TraceIQ v0.3.0 introduces mathematically rigorous metrics for research:
+
+| Metric | Formula | Description |
+|--------|---------|-------------|
+| **L2 Drift** | `‖s(t+) - s(t-)‖₂` | Euclidean distance of state change |
+| **IQx** | `drift / (baseline + ε)` | Normalized influence quotient |
+| **Propagation Risk** | `spectral_radius(W)` | Network instability (>1.0 = amplification) |
+| **Attack Surface** | `Σ capability_weights` | Security risk from agent capabilities |
+| **RWI** | `IQx × attack_surface` | Risk-weighted influence |
+| **Z-score** | `(IQx - μ) / (σ + ε)` | Anomaly detection metric |
+
+### Using IEEE Metrics
+
+```python
+from traceiq import InfluenceTracker, TrackerConfig
+
+config = TrackerConfig(
+    storage_backend="sqlite",
+    storage_path="research.db",
+    epsilon=1e-6,
+    anomaly_threshold=2.0,
+    capability_weights={
+        "execute_code": 1.0,
+        "admin": 1.5,
+    }
+)
+
+tracker = InfluenceTracker(config=config)
+
+# Register agent capabilities for RWI computation
+tracker.capabilities.register_agent("agent_0", ["execute_code", "admin"])
+
+result = tracker.track_event(
+    sender_id="agent_0",
+    receiver_id="agent_1",
+    sender_content="Execute this command",
+    receiver_content="Executing...",
+)
+
+print(f"IQx: {result['IQx']}")
+print(f"RWI: {result['RWI']}")
+print(f"Z-score: {result['Z_score']}")
+print(f"Alert: {result['alert']}")
+
+# Get propagation risk (spectral radius)
+pr = tracker.get_propagation_risk()
+print(f"Propagation Risk: {pr}")
+
+# Get anomaly alerts
+alerts = tracker.get_alerts()
+```
 
 ## Configuration
 
@@ -364,6 +429,8 @@ TraceIQ/
 │   ├── tracker.py            # Main InfluenceTracker class
 │   ├── embeddings.py         # Embedding backends
 │   ├── scoring.py            # Drift & influence calculations
+│   ├── metrics.py            # IEEE metric computations (v0.3.0)
+│   ├── capabilities.py       # Agent capability registry (v0.3.0)
 │   ├── graph.py              # NetworkX graph analytics
 │   ├── plotting.py           # Matplotlib visualizations
 │   ├── cli.py                # Click-based CLI
@@ -372,11 +439,16 @@ TraceIQ/
 │       ├── base.py           # Abstract storage interface
 │       ├── memory.py         # In-memory backend
 │       └── sqlite.py         # SQLite backend
-├── tests/                    # Pytest test suite
+├── research/                 # Research experiment scripts (v0.3.0)
+│   ├── synthetic_simulation.py
+│   ├── ablation_study.py
+│   └── sensitivity_analysis.py
+├── tests/                    # Pytest test suite (116 tests)
 ├── examples/
 │   ├── simulate_infection.py # Idea propagation simulation
 │   └── test_real_agents.py   # Real embedding test
 ├── docs/                     # MkDocs documentation
+├── MATH.md                   # Mathematical framework (v0.3.0)
 ├── pyproject.toml            # Package configuration
 └── README.md
 ```
@@ -390,8 +462,10 @@ TraceIQ/
 | `InfluenceTracker` | Main class for tracking interactions |
 | `TrackerConfig` | Configuration options |
 | `InteractionEvent` | Pydantic model for events |
-| `ScoreResult` | Pydantic model for scores |
+| `ScoreResult` | Pydantic model for scores (includes IEEE metrics) |
 | `SummaryReport` | Aggregated metrics report |
+| `CapabilityRegistry` | Agent capability management (v0.3.0) |
+| `PropagationRiskResult` | Propagation risk over time (v0.3.0) |
 
 ### Storage Backends
 
@@ -408,6 +482,10 @@ TraceIQ/
 | `plot_influence_heatmap()` | Matrix heatmap of influence scores |
 | `plot_top_influencers()` | Horizontal bar chart |
 | `plot_influence_network()` | NetworkX graph visualization |
+| `plot_iqx_heatmap()` | IQx matrix heatmap (v0.3.0) |
+| `plot_propagation_risk_over_time()` | Spectral radius over time (v0.3.0) |
+| `plot_z_score_distribution()` | Z-score histogram with threshold (v0.3.0) |
+| `plot_top_risky_agents()` | RWI comparison chart (v0.3.0) |
 
 ## Examples
 
@@ -448,8 +526,9 @@ mkdocs serve  # Local preview at http://127.0.0.1:8000
 - rich >= 13.0
 
 **Optional:**
-- sentence-transformers >= 2.2 (embedding)
-- matplotlib >= 3.7 (plotting)
+- sentence-transformers >= 2.2 (`[embedding]`)
+- matplotlib >= 3.7 (`[plot]`)
+- pandas >= 2.0, scipy >= 1.10 (`[research]` - for v0.3.0 research scripts)
 
 ## License
 

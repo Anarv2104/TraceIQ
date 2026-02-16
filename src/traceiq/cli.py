@@ -251,6 +251,320 @@ def export(db: str, output: str, fmt: str) -> None:
     console.print(f"[green]Exported data to:[/green] {output}")
 
 
+# IEEE Metrics Commands (v0.3.0)
+
+
+@cli.command("propagation-risk")
+@click.option(
+    "--db",
+    type=click.Path(exists=True),
+    default="traceiq.db",
+    help="Path to SQLite database file",
+)
+@click.option(
+    "--window",
+    type=int,
+    default=10,
+    help="Window size for time-based analysis",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Output as JSON",
+)
+def propagation_risk(db: str, window: int, as_json: bool) -> None:
+    """Show propagation risk (spectral radius of influence graph)."""
+    config = TrackerConfig(
+        storage_backend="sqlite",
+        storage_path=db,
+    )
+
+    with InfluenceTracker(config=config, use_mock_embedder=True) as tracker:
+        events = tracker.get_events()
+        scores = tracker.get_scores()
+        tracker.graph.build_from_events(events, scores)
+
+        # Current propagation risk
+        current_pr = tracker.get_propagation_risk()
+
+        # Over time
+        pr_history = tracker.get_propagation_risk_over_time(window_size=window)
+
+        if as_json:
+            output = {
+                "current_propagation_risk": current_pr,
+                "history": [
+                    {
+                        "window_start": pr.window_start.isoformat(),
+                        "window_end": pr.window_end.isoformat(),
+                        "spectral_radius": pr.spectral_radius,
+                        "edge_count": pr.edge_count,
+                        "agent_count": pr.agent_count,
+                    }
+                    for pr in pr_history
+                ],
+            }
+            console.print(json.dumps(output, indent=2))
+            return
+
+        console.print("\n[bold]Propagation Risk Analysis[/bold]\n")
+
+        console.print(f"Current Propagation Risk: [cyan]{current_pr:.4f}[/cyan]")
+        if current_pr > 1.0:
+            console.print(
+                "[yellow]Warning: PR > 1.0 indicates potential influence amplification[/yellow]"
+            )
+
+        if pr_history:
+            console.print(f"\nHistory (window size={window}):")
+            table = Table()
+            table.add_column("Window Start", style="dim")
+            table.add_column("Window End", style="dim")
+            table.add_column("Spectral Radius", style="cyan")
+            table.add_column("Edges", style="green")
+            table.add_column("Agents", style="green")
+
+            for pr in pr_history[-10:]:  # Show last 10
+                table.add_row(
+                    pr.window_start.strftime("%Y-%m-%d %H:%M"),
+                    pr.window_end.strftime("%Y-%m-%d %H:%M"),
+                    f"{pr.spectral_radius:.4f}",
+                    str(pr.edge_count),
+                    str(pr.agent_count),
+                )
+
+            console.print(table)
+
+
+@cli.command("alerts")
+@click.option(
+    "--db",
+    type=click.Path(exists=True),
+    default="traceiq.db",
+    help="Path to SQLite database file",
+)
+@click.option(
+    "--threshold",
+    type=float,
+    default=2.0,
+    help="Minimum Z-score threshold for alerts",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Output as JSON",
+)
+def alerts(db: str, threshold: float, as_json: bool) -> None:
+    """Show anomaly alerts (high Z-score events)."""
+    config = TrackerConfig(
+        storage_backend="sqlite",
+        storage_path=db,
+    )
+
+    with InfluenceTracker(config=config, use_mock_embedder=True) as tracker:
+        alert_list = tracker.get_alerts(threshold=threshold)
+
+        if as_json:
+            output = [
+                {
+                    "event_id": str(a.event_id),
+                    "Z_score": a.Z_score,
+                    "IQx": a.IQx,
+                    "RWI": a.RWI,
+                    "drift_l2": a.drift_l2,
+                }
+                for a in alert_list
+            ]
+            console.print(json.dumps(output, indent=2))
+            return
+
+        console.print(f"\n[bold]Anomaly Alerts (Z > {threshold})[/bold]\n")
+
+        if not alert_list:
+            console.print("[green]No alerts found[/green]")
+            return
+
+        table = Table()
+        table.add_column("Event ID", style="dim")
+        table.add_column("Z-Score", style="red")
+        table.add_column("IQx", style="cyan")
+        table.add_column("RWI", style="yellow")
+        table.add_column("Drift L2", style="green")
+
+        for alert in alert_list[:20]:  # Limit display
+            table.add_row(
+                str(alert.event_id)[:8] + "...",
+                f"{alert.Z_score:.2f}" if alert.Z_score else "-",
+                f"{alert.IQx:.4f}" if alert.IQx else "-",
+                f"{alert.RWI:.4f}" if alert.RWI else "-",
+                f"{alert.drift_l2:.4f}" if alert.drift_l2 else "-",
+            )
+
+        console.print(table)
+        console.print(f"\nTotal alerts: {len(alert_list)}")
+
+
+@cli.command("risky-agents")
+@click.option(
+    "--db",
+    type=click.Path(exists=True),
+    default="traceiq.db",
+    help="Path to SQLite database file",
+)
+@click.option(
+    "--top-n",
+    type=int,
+    default=10,
+    help="Number of top risky agents to show",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Output as JSON",
+)
+def risky_agents(db: str, top_n: int, as_json: bool) -> None:
+    """Show agents ranked by risk-weighted influence."""
+    config = TrackerConfig(
+        storage_backend="sqlite",
+        storage_path=db,
+    )
+
+    with InfluenceTracker(config=config, use_mock_embedder=True) as tracker:
+        events = tracker.get_events()
+        scores = tracker.get_scores()
+        tracker.graph.build_from_events(events, scores)
+
+        risky = tracker.get_risky_agents(top_n=top_n)
+
+        if as_json:
+            output = [
+                {
+                    "agent_id": agent_id,
+                    "total_rwi": total_rwi,
+                    "attack_surface": attack_surface,
+                }
+                for agent_id, total_rwi, attack_surface in risky
+            ]
+            console.print(json.dumps(output, indent=2))
+            return
+
+        console.print("\n[bold]Risky Agents (by RWI)[/bold]\n")
+
+        if not risky:
+            console.print("[green]No risky agents found[/green]")
+            return
+
+        table = Table()
+        table.add_column("Rank", style="dim")
+        table.add_column("Agent", style="cyan")
+        table.add_column("Total RWI", style="red")
+        table.add_column("Attack Surface", style="yellow")
+
+        for i, (agent_id, total_rwi, attack_surface) in enumerate(risky, 1):
+            table.add_row(
+                str(i),
+                agent_id,
+                f"{total_rwi:.4f}",
+                f"{attack_surface:.2f}",
+            )
+
+        console.print(table)
+
+
+@cli.group()
+def capabilities() -> None:
+    """Manage agent capability registry."""
+    pass
+
+
+@capabilities.command("load")
+@click.argument("registry_file", type=click.Path(exists=True))
+@click.option(
+    "--db",
+    type=click.Path(exists=True),
+    default="traceiq.db",
+    help="Path to SQLite database file",
+)
+def capabilities_load(registry_file: str, db: str) -> None:
+    """Load capability registry from JSON file."""
+    config = TrackerConfig(
+        storage_backend="sqlite",
+        storage_path=db,
+        capability_registry_path=registry_file,
+    )
+
+    with InfluenceTracker(config=config, use_mock_embedder=True) as tracker:
+        agents = tracker.capabilities.get_all_agents()
+        console.print(f"[green]Loaded {len(agents)} agents from registry[/green]")
+
+        for agent_id in agents:
+            caps = tracker.capabilities.get_capabilities(agent_id)
+            surface = tracker.capabilities.compute_attack_surface(agent_id)
+            console.print(f"  {agent_id}: {caps} (AS={surface:.2f})")
+
+
+@capabilities.command("show")
+@click.option(
+    "--db",
+    type=click.Path(exists=True),
+    default="traceiq.db",
+    help="Path to SQLite database file",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Output as JSON",
+)
+def capabilities_show(db: str, as_json: bool) -> None:
+    """Show current capability weights and registered agents."""
+    config = TrackerConfig(
+        storage_backend="sqlite",
+        storage_path=db,
+    )
+
+    with InfluenceTracker(config=config, use_mock_embedder=True) as tracker:
+        weights = tracker.capabilities.weights
+        agents = tracker.capabilities.get_all_capabilities_models()
+
+        if as_json:
+            output = {
+                "weights": weights,
+                "agents": [a.model_dump() for a in agents],
+            }
+            console.print(json.dumps(output, indent=2))
+            return
+
+        console.print("\n[bold]Capability Weights[/bold]\n")
+        weight_table = Table()
+        weight_table.add_column("Capability", style="cyan")
+        weight_table.add_column("Weight", style="green")
+
+        for cap, weight in sorted(weights.items()):
+            weight_table.add_row(cap, f"{weight:.2f}")
+
+        console.print(weight_table)
+
+        if agents:
+            console.print("\n[bold]Registered Agents[/bold]\n")
+            agent_table = Table()
+            agent_table.add_column("Agent", style="cyan")
+            agent_table.add_column("Capabilities", style="dim")
+            agent_table.add_column("Attack Surface", style="yellow")
+
+            for agent in agents:
+                agent_table.add_row(
+                    agent.agent_id,
+                    ", ".join(agent.capabilities) or "-",
+                    f"{agent.attack_surface:.2f}" if agent.attack_surface else "-",
+                )
+
+            console.print(agent_table)
+
+
 @cli.group()
 def plot() -> None:
     """Generate plots from tracked data."""
@@ -402,6 +716,80 @@ def plot_network(db: str, output: str, min_weight: float) -> None:
         )
 
     console.print(f"[green]Saved network plot to:[/green] {output}")
+
+
+@plot.command("propagation-risk")
+@click.option(
+    "--db",
+    type=click.Path(exists=True),
+    default="traceiq.db",
+    help="Path to SQLite database file",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    required=True,
+    help="Output image path",
+)
+@click.option(
+    "--window",
+    type=int,
+    default=10,
+    help="Window size for time-based analysis",
+)
+def plot_propagation_risk_cmd(db: str, output: str, window: int) -> None:
+    """Plot propagation risk over time."""
+    from traceiq.plotting import plot_propagation_risk_over_time
+
+    config = TrackerConfig(
+        storage_backend="sqlite",
+        storage_path=db,
+    )
+
+    with InfluenceTracker(config=config, use_mock_embedder=True) as tracker:
+        pr_results = tracker.get_propagation_risk_over_time(window_size=window)
+
+        if not pr_results:
+            console.print("[yellow]Not enough data for propagation risk plot[/yellow]")
+            return
+
+        plot_propagation_risk_over_time(pr_results, output_path=output)
+
+    console.print(f"[green]Saved propagation risk plot to:[/green] {output}")
+
+
+@plot.command("iqx-heatmap")
+@click.option(
+    "--db",
+    type=click.Path(exists=True),
+    default="traceiq.db",
+    help="Path to SQLite database file",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    required=True,
+    help="Output image path",
+)
+def plot_iqx_heatmap_cmd(db: str, output: str) -> None:
+    """Plot IQx heatmap."""
+    from traceiq.plotting import plot_iqx_heatmap
+
+    config = TrackerConfig(
+        storage_backend="sqlite",
+        storage_path=db,
+    )
+
+    with InfluenceTracker(config=config, use_mock_embedder=True) as tracker:
+        events = tracker.get_events()
+        scores = tracker.get_scores()
+        tracker.graph.build_from_events(events, scores)
+
+        plot_iqx_heatmap(tracker.graph, output_path=output)
+
+    console.print(f"[green]Saved IQx heatmap to:[/green] {output}")
 
 
 if __name__ == "__main__":

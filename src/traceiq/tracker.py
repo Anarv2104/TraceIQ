@@ -7,15 +7,17 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from traceiq.capabilities import CapabilityRegistry
 from traceiq.embeddings import MockEmbedder, SentenceTransformerEmbedder
 from traceiq.export import export_combined_csv, export_combined_jsonl
 from traceiq.graph import InfluenceGraph
+from traceiq.metrics import compute_accumulated_influence
 from traceiq.models import InteractionEvent, ScoreResult, SummaryReport, TrackerConfig
 from traceiq.scoring import ScoringEngine
 from traceiq.storage import MemoryStorage, SQLiteStorage, StorageBackend
 
 if TYPE_CHECKING:
-    pass
+    from traceiq.models import PropagationRiskResult
 
 
 class InfluenceTracker:
@@ -58,15 +60,24 @@ class InfluenceTracker:
                 cache_size=self.config.embedding_cache_size,
             )
 
-        # Initialize scoring engine
+        # Initialize scoring engine (with IEEE metrics parameters)
         self._scorer = ScoringEngine(
             baseline_window=self.config.baseline_window,
             drift_threshold=self.config.drift_threshold,
             influence_threshold=self.config.influence_threshold,
+            epsilon=self.config.epsilon,
+            anomaly_threshold=self.config.anomaly_threshold,
         )
 
         # Initialize graph
         self._graph = InfluenceGraph()
+
+        # Initialize capability registry (v0.3.0)
+        self._capabilities = CapabilityRegistry(
+            weights=self.config.capability_weights or None
+        )
+        if self.config.capability_registry_path:
+            self._capabilities.load_from_file(self.config.capability_registry_path)
 
         # Set random seed if provided
         if self.config.random_seed is not None:
@@ -91,7 +102,7 @@ class InfluenceTracker:
             metadata: Optional metadata dict
 
         Returns:
-            Dict with event_id, scores, and flags
+            Dict with event_id, scores, flags, and IEEE metrics
         """
         # Create event
         event = InteractionEvent(
@@ -106,13 +117,19 @@ class InfluenceTracker:
         sender_result = self._embedder.embed_with_info(sender_content)
         receiver_result = self._embedder.embed_with_info(receiver_content)
 
-        # Compute scores
+        # Get sender attack surface if registered
+        sender_attack_surface = None
+        if sender_id in self._capabilities:
+            sender_attack_surface = self._capabilities.compute_attack_surface(sender_id)
+
+        # Compute scores (including IEEE metrics)
         score = self._scorer.compute_scores(
             event_id=event.event_id,
             sender_id=sender_id,
             receiver_id=receiver_id,
             sender_embedding=sender_result.embedding,
             receiver_embedding=receiver_result.embedding,
+            sender_attack_surface=sender_attack_surface,
         )
 
         # Add truncation flags if content was truncated
@@ -136,6 +153,13 @@ class InfluenceTracker:
             "drift_delta": score.drift_delta,
             "flags": score.flags,
             "cold_start": score.cold_start,
+            # IEEE metrics (v0.3.0)
+            "drift_l2": score.drift_l2,
+            "IQx": score.IQx,
+            "baseline_median": score.baseline_median,
+            "RWI": score.RWI,
+            "Z_score": score.Z_score,
+            "alert": score.alert_flag,
         }
 
     def bulk_track(
@@ -268,6 +292,128 @@ class InfluenceTracker:
     def storage(self) -> StorageBackend:
         """Access the storage backend."""
         return self._storage
+
+    @property
+    def capabilities(self) -> CapabilityRegistry:
+        """Access the capability registry for agent security tracking."""
+        return self._capabilities
+
+    # IEEE metrics methods (v0.3.0)
+
+    def get_propagation_risk(self, weight_type: str = "iqx") -> float:
+        """Get current propagation risk (spectral radius of influence graph).
+
+        Args:
+            weight_type: Type of weight to use: "iqx", "influence", or "drift"
+
+        Returns:
+            Spectral radius (values > 1.0 indicate potential influence amplification)
+        """
+        return self._graph.compute_spectral_radius(weight_type)
+
+    def get_propagation_risk_over_time(
+        self, window_size: int = 10
+    ) -> list[PropagationRiskResult]:
+        """Compute propagation risk over sliding time windows.
+
+        Args:
+            window_size: Number of events per window
+
+        Returns:
+            List of PropagationRiskResult for each window
+        """
+        events = self._storage.get_all_events()
+        scores = self._storage.get_all_scores()
+        return self._graph.compute_propagation_risk_over_time(
+            events, scores, window_size
+        )
+
+    def get_accumulated_influence(self, agent_id: str) -> float:
+        """Get accumulated influence (sum of IQx) for an agent.
+
+        This sums all IQx values where agent_id was the sender.
+
+        Args:
+            agent_id: Agent identifier
+
+        Returns:
+            Sum of IQx values for interactions where this agent was sender
+        """
+        scores = self._storage.get_all_scores()
+        events = self._storage.get_all_events()
+
+        # Create event_id -> sender_id mapping
+        sender_map = {e.event_id: e.sender_id for e in events}
+
+        # Sum IQx for events where agent was sender
+        iqx_values = [
+            s.IQx
+            for s in scores
+            if s.IQx is not None and sender_map.get(s.event_id) == agent_id
+        ]
+
+        return compute_accumulated_influence(iqx_values)
+
+    def get_alerts(self, threshold: float | None = None) -> list[ScoreResult]:
+        """Get all anomaly alerts.
+
+        Args:
+            threshold: Optional minimum Z-score threshold (overrides config)
+
+        Returns:
+            List of ScoreResult with alert_flag=True, sorted by Z-score descending
+        """
+        scores = self._storage.get_all_scores()
+
+        # Filter for alerts
+        alerts = [s for s in scores if s.alert_flag]
+
+        # Apply threshold filter if provided
+        if threshold is not None:
+            alerts = [
+                s
+                for s in alerts
+                if s.Z_score is not None and abs(s.Z_score) > threshold
+            ]
+
+        # Sort by absolute Z-score descending
+        alerts.sort(key=lambda s: abs(s.Z_score or 0), reverse=True)
+
+        return alerts
+
+    def get_risky_agents(self, top_n: int = 10) -> list[tuple[str, float, float]]:
+        """Get agents ranked by risk (RWI * accumulated influence).
+
+        Args:
+            top_n: Number of top agents to return
+
+        Returns:
+            List of (agent_id, total_rwi, attack_surface) tuples
+        """
+        scores = self._storage.get_all_scores()
+        events = self._storage.get_all_events()
+
+        # Create event_id -> sender_id mapping
+        sender_map = {e.event_id: e.sender_id for e in events}
+
+        # Sum RWI for each agent
+        rwi_sums: dict[str, float] = {}
+        for s in scores:
+            if s.RWI is not None:
+                sender = sender_map.get(s.event_id)
+                if sender:
+                    rwi_sums[sender] = rwi_sums.get(sender, 0.0) + s.RWI
+
+        # Get attack surface for each agent
+        results = []
+        for agent_id, total_rwi in rwi_sums.items():
+            attack_surface = self._capabilities.compute_attack_surface(agent_id)
+            results.append((agent_id, total_rwi, attack_surface))
+
+        # Sort by total RWI descending
+        results.sort(key=lambda x: -x[1])
+
+        return results[:top_n]
 
     def close(self) -> None:
         """Close the tracker and release resources."""

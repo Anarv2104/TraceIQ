@@ -40,6 +40,20 @@ class TrackerConfig(BaseModel):
     drift_threshold: float = Field(default=0.3, ge=0.0, le=2.0)
     influence_threshold: float = Field(default=0.5, ge=-1.0, le=1.0)
 
+    # IEEE metrics settings (v0.3.0)
+    epsilon: float = Field(
+        default=1e-6, gt=0, description="Numerical stability constant"
+    )
+    anomaly_threshold: float = Field(
+        default=2.0, ge=0.0, description="Z-score threshold for anomaly alerts"
+    )
+    capability_weights: dict[str, float] = Field(
+        default_factory=dict, description="Custom capability weights for attack surface"
+    )
+    capability_registry_path: str | None = Field(
+        default=None, description="Path to JSON capability registry file"
+    )
+
     # Misc
     random_seed: int | None = None
 
@@ -53,6 +67,16 @@ class ScoreResult(BaseModel):
     receiver_baseline_drift: float
     flags: list[str] = Field(default_factory=list)
     cold_start: bool = False
+
+    # IEEE metrics (v0.3.0)
+    drift_l2: float | None = Field(default=None, description="L2 norm drift")
+    IQx: float | None = Field(default=None, description="Influence Quotient")
+    baseline_median: float | None = Field(
+        default=None, description="Receiver's baseline median drift"
+    )
+    RWI: float | None = Field(default=None, description="Risk-Weighted Influence")
+    Z_score: float | None = Field(default=None, description="Anomaly Z-score")
+    alert_flag: bool = Field(default=False, description="True if Z > anomaly_threshold")
 
 
 class SummaryReport(BaseModel):
@@ -68,3 +92,23 @@ class SummaryReport(BaseModel):
     top_influencers: list[tuple[str, float]]
     top_susceptible: list[tuple[str, float]]
     influence_chains: list[list[str]]
+
+
+class AgentCapabilities(BaseModel):
+    """Agent capability registration for attack surface computation."""
+
+    agent_id: str
+    capabilities: list[str] = Field(default_factory=list)
+    attack_surface: float | None = Field(
+        default=None, description="Computed attack surface score"
+    )
+
+
+class PropagationRiskResult(BaseModel):
+    """Result of propagation risk computation over a time window."""
+
+    window_start: datetime
+    window_end: datetime
+    spectral_radius: float = Field(description="Largest absolute eigenvalue")
+    edge_count: int = Field(description="Number of edges in adjacency matrix")
+    agent_count: int = Field(description="Number of agents in adjacency matrix")
