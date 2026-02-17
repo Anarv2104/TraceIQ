@@ -120,9 +120,9 @@ result = tracker.track_event(
     receiver_content="You make a good point. Renewables are the future.",
 )
 
-print(f"Influence Score: {result['influence_score']:+.3f}")
-print(f"Drift Delta: {result['drift_delta']:.3f}")
-print(f"Flags: {result['flags']}")
+print(f"State Drift: {result['drift_l2_state']}")
+print(f"IQx: {result['IQx']}")
+print(f"Alert: {result['alert']}")
 ```
 
 ### Track Multiple Interactions
@@ -542,6 +542,9 @@ TraceIQ/
 Run the included examples:
 
 ```bash
+# Quick smoke test (uses MockEmbedder - no heavy deps)
+python examples/smoke.py
+
 # Simulate idea spreading through agents
 python examples/simulate_infection.py
 
