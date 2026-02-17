@@ -69,7 +69,21 @@ class ScoreResult(BaseModel):
     cold_start: bool = False
 
     # IEEE metrics (v0.3.0)
-    drift_l2: float | None = Field(default=None, description="L2 norm drift")
+    # Canonical state drift (IEEE primary metric): ||s(t+) - s(t-)||
+    drift_l2_state: float | None = Field(
+        default=None,
+        description="Canonical L2 state drift: ||current - previous||",
+    )
+    # Proxy baseline drift (legacy): ||s(t) - rolling_mean||
+    drift_l2_proxy: float | None = Field(
+        default=None,
+        description="Proxy drift against rolling mean baseline",
+    )
+    # Backward compatibility alias (uses canonical if available, else proxy)
+    drift_l2: float | None = Field(
+        default=None,
+        description="L2 drift (canonical if available, else proxy). Prefer drift_l2_state.",
+    )
     IQx: float | None = Field(default=None, description="Influence Quotient")
     baseline_median: float | None = Field(
         default=None, description="Receiver's baseline median drift"

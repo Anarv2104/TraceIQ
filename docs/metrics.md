@@ -192,6 +192,130 @@ for agent, score in summary.top_susceptible:
     print(f"  {agent}: {score:.3f}")
 ```
 
+## IEEE Metrics (v0.3.0)
+
+TraceIQ v0.3.0 introduces mathematically rigorous metrics for research applications.
+
+### Drift Types
+
+TraceIQ computes two types of L2 drift:
+
+#### Canonical State Drift (`drift_l2_state`) - PRIMARY
+
+Measures actual state change between consecutive responses:
+
+```
+D_state = ||s(t+) - s(t-)||_2
+```
+
+Where:
+- `s(t-)` = receiver's embedding from **previous** response
+- `s(t+)` = receiver's embedding from **current** response
+
+This directly measures how much the receiver's output changed.
+
+#### Proxy Baseline Drift (`drift_l2_proxy`) - LEGACY
+
+Measures deviation from typical behavior:
+
+```
+D_proxy = ||s(t) - baseline||_2
+```
+
+Where:
+- `s(t)` = current receiver embedding
+- `baseline` = rolling mean of recent embeddings
+
+This measures whether current behavior is "typical".
+
+#### Which to Use?
+
+| Field | Best For | When to Use |
+|-------|----------|-------------|
+| `drift_l2_state` | Influence measurement | Research, IEEE metrics, IQx/RWI |
+| `drift_l2_proxy` | Anomaly detection | Behavioral deviation, security monitoring |
+| `drift_l2` | Backward compatibility | Legacy code (maps to canonical if available) |
+
+### Influence Quotient (IQx)
+
+Normalizes drift by receiver baseline responsiveness:
+
+```
+IQx = drift / (baseline_median + epsilon)
+```
+
+| IQx Value | Interpretation |
+|-----------|----------------|
+| < 1.0 | Below-average influence |
+| ≈ 1.0 | Average influence |
+| > 1.0 | Above-average influence |
+| > 2.0 | Significant influence |
+
+### Propagation Risk
+
+Network-level instability measured as spectral radius:
+
+```
+PR = max(|eigenvalues(W)|)
+```
+
+| PR Value | Interpretation |
+|----------|----------------|
+| < 1.0 | Influence dampens through network |
+| = 1.0 | Influence preserved |
+| > 1.0 | Influence amplifies (unstable) |
+
+### Risk-Weighted Influence (RWI)
+
+Combines IQx with sender's attack surface:
+
+```
+RWI = IQx × attack_surface
+```
+
+Prioritizes monitoring of high-capability agents with high influence.
+
+### Z-Score Anomaly Detection
+
+Detects outliers in IQx values:
+
+```
+Z = (IQx - mean) / (std + epsilon)
+```
+
+Alert triggered when `|Z| > anomaly_threshold` (default: 2.0).
+
+### Example Usage
+
+```python
+from traceiq import InfluenceTracker, TrackerConfig
+
+config = TrackerConfig(
+    epsilon=1e-6,
+    anomaly_threshold=2.0,
+    capability_weights={"execute_code": 1.0, "admin": 1.5}
+)
+
+tracker = InfluenceTracker(config=config, use_mock_embedder=True)
+tracker.capabilities.register_agent("agent_0", ["execute_code", "admin"])
+
+result = tracker.track_event(
+    sender_id="agent_0",
+    receiver_id="agent_1",
+    sender_content="Execute command",
+    receiver_content="Executing...",
+)
+
+print(f"Canonical Drift: {result['drift_l2_state']}")
+print(f"IQx: {result['IQx']}")
+print(f"RWI: {result['RWI']}")
+print(f"Alert: {result['alert']}")
+
+# Network-level metrics
+pr = tracker.get_propagation_risk()
+alerts = tracker.get_alerts()
+```
+
 ## Best Practices
 
 1. **Baseline Window**: Use larger windows (10-20) for stable baselines, smaller (3-5) for detecting rapid changes
@@ -201,3 +325,5 @@ for agent, score in summary.top_susceptible:
 3. **Real Embeddings**: For production, use real sentence-transformers instead of mock embedder
 
 4. **Interpretation**: High drift without high influence may indicate external factors; high influence with low drift may indicate subtle but aligned messaging
+
+5. **Canonical vs Proxy**: Use `drift_l2_state` for research and influence quantification; use `drift_l2_proxy` for anomaly detection and behavioral profiling

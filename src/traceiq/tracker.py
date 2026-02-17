@@ -154,7 +154,9 @@ class InfluenceTracker:
             "flags": score.flags,
             "cold_start": score.cold_start,
             # IEEE metrics (v0.3.0)
-            "drift_l2": score.drift_l2,
+            "drift_l2_state": score.drift_l2_state,  # Canonical: ||current - previous||
+            "drift_l2_proxy": score.drift_l2_proxy,  # Legacy: ||current - rolling_mean||
+            "drift_l2": score.drift_l2,  # Alias for backward compat
             "IQx": score.IQx,
             "baseline_median": score.baseline_median,
             "RWI": score.RWI,

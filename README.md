@@ -12,7 +12,48 @@
 
 ---
 
-**TraceIQ** is a Python library for tracking, analyzing, and visualizing how AI agents influence each other in multi-agent systems. It uses semantic embeddings to detect when one agent's output causes another agent to deviate from their baseline behavior.
+## What It Is
+
+**TraceIQ** is a Python library for tracking and quantifying how AI agents influence each other in multi-agent systems. It uses semantic embeddings to measure state changes when one agent's output affects another agent's response.
+
+## What It Measures
+
+| Metric | What It Captures |
+|--------|------------------|
+| **State Drift** | How much a receiver's output changed after an interaction |
+| **Influence Quotient (IQx)** | Normalized influence relative to baseline responsiveness |
+| **Propagation Risk** | Network-level instability (spectral radius) |
+| **Risk-Weighted Influence** | IQx adjusted for sender's attack surface |
+
+## What It Does NOT Measure
+
+- **Causal attribution**: TraceIQ detects correlation, not causation
+- **Intent**: Cannot determine if influence is intentional or benign
+- **Content analysis**: Does not parse meaning, only embedding similarity
+
+## Quickstart
+
+```python
+from traceiq import InfluenceTracker
+
+# Create tracker (use_mock_embedder=True for testing without sentence-transformers)
+tracker = InfluenceTracker(use_mock_embedder=True)
+
+# Track an interaction
+result = tracker.track_event(
+    sender_id="agent_a",
+    receiver_id="agent_b",
+    sender_content="We should all switch to renewable energy!",
+    receiver_content="You make a good point. Renewables are the future.",
+)
+
+# Access IEEE metrics
+print(f"State Drift: {result['drift_l2_state']}")
+print(f"IQx: {result['IQx']}")
+print(f"Alert: {result['alert']}")
+
+tracker.close()
+```
 
 ## Why TraceIQ?
 
@@ -240,10 +281,19 @@ influence_score = cosine_similarity(sender_embedding, baseline_shift_vector)
 
 TraceIQ v0.3.0 introduces mathematically rigorous metrics for research:
 
+### Drift Metrics
+
+| Field | Formula | Description |
+|-------|---------|-------------|
+| `drift_l2_state` | `‖current - previous‖₂` | **Canonical**: actual state change (PRIMARY) |
+| `drift_l2_proxy` | `‖current - rolling_mean‖₂` | **Legacy**: deviation from baseline |
+| `drift_l2` | (alias) | Maps to canonical if available |
+
+### Influence Metrics
+
 | Metric | Formula | Description |
 |--------|---------|-------------|
-| **L2 Drift** | `‖s(t+) - s(t-)‖₂` | Euclidean distance of state change |
-| **IQx** | `drift / (baseline + ε)` | Normalized influence quotient |
+| **IQx** | `drift / (baseline_median + ε)` | Normalized influence quotient |
 | **Propagation Risk** | `spectral_radius(W)` | Network instability (>1.0 = amplification) |
 | **Attack Surface** | `Σ capability_weights` | Security risk from agent capabilities |
 | **RWI** | `IQx × attack_surface` | Risk-weighted influence |

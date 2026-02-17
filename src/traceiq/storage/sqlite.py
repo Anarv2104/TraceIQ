@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     pass
 
 # Schema version for migration tracking
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class SQLiteStorage(StorageBackend):
@@ -62,6 +62,8 @@ class SQLiteStorage(StorageBackend):
                 flags_json TEXT NOT NULL,
                 cold_start INTEGER NOT NULL,
                 drift_l2 REAL,
+                drift_l2_state REAL,
+                drift_l2_proxy REAL,
                 IQx REAL,
                 baseline_median REAL,
                 RWI REAL,
@@ -164,6 +166,23 @@ class SQLiteStorage(StorageBackend):
                         f"ALTER TABLE scores ADD COLUMN {col_name} {col_type}"
                     )
 
+        # Migration from v2 to v3: Add canonical/proxy drift columns
+        if current_version < 3:
+            cursor.execute("PRAGMA table_info(scores)")
+            score_columns = {row[1] for row in cursor.fetchall()}
+
+            # Add new canonical and proxy drift columns
+            new_columns = [
+                ("drift_l2_state", "REAL"),
+                ("drift_l2_proxy", "REAL"),
+            ]
+
+            for col_name, col_type in new_columns:
+                if col_name not in score_columns:
+                    cursor.execute(
+                        f"ALTER TABLE scores ADD COLUMN {col_name} {col_type}"
+                    )
+
         # Update schema version
         cursor.execute(
             "INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?, ?)",
@@ -207,8 +226,8 @@ class SQLiteStorage(StorageBackend):
             """
             INSERT OR REPLACE INTO scores
             (event_id, influence_score, drift_delta, receiver_baseline_drift, flags_json, cold_start,
-             drift_l2, IQx, baseline_median, RWI, Z_score, alert_flag)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             drift_l2, drift_l2_state, drift_l2_proxy, IQx, baseline_median, RWI, Z_score, alert_flag)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 str(score.event_id),
@@ -218,6 +237,8 @@ class SQLiteStorage(StorageBackend):
                 json.dumps(score.flags),
                 1 if score.cold_start else 0,
                 score.drift_l2,
+                score.drift_l2_state,
+                score.drift_l2_proxy,
                 score.IQx,
                 score.baseline_median,
                 score.RWI,
@@ -249,6 +270,8 @@ class SQLiteStorage(StorageBackend):
             flags=json.loads(row["flags_json"]),
             cold_start=bool(row["cold_start"]),
             # IEEE metrics (may be None for old records)
+            drift_l2_state=row["drift_l2_state"] if "drift_l2_state" in keys else None,
+            drift_l2_proxy=row["drift_l2_proxy"] if "drift_l2_proxy" in keys else None,
             drift_l2=row["drift_l2"] if "drift_l2" in keys else None,
             IQx=row["IQx"] if "IQx" in keys else None,
             baseline_median=row["baseline_median"]

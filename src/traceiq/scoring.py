@@ -87,12 +87,30 @@ class ScoringEngine:
         # Maps receiver_id -> list of recent IQx values (for Z-score computation)
         self._receiver_iqx_history: dict[str, list[float]] = {}
 
+        # Canonical state tracking: previous receiver embedding per receiver
+        # This enables computing IEEE canonical drift: ||s(t+) - s(t-)||
+        self._last_receiver_state: dict[str, NDArray[np.float32]] = {}
+
     def _get_baseline(self, receiver_id: str) -> NDArray[np.float32] | None:
-        """Get mean baseline embedding for a receiver."""
+        """Get mean baseline embedding for a receiver (for proxy drift)."""
         embeddings = self._receiver_baselines.get(receiver_id, [])
         if not embeddings:
             return None
         return np.mean(embeddings, axis=0).astype(np.float32)
+
+    def _get_last_state(self, receiver_id: str) -> NDArray[np.float32] | None:
+        """Get the most recent embedding for a receiver (for canonical drift).
+
+        This returns the receiver's embedding from the PREVIOUS interaction,
+        enabling computation of the IEEE canonical drift: ||s(t+) - s(t-)||
+        """
+        return self._last_receiver_state.get(receiver_id)
+
+    def _update_last_state(
+        self, receiver_id: str, embedding: NDArray[np.float32]
+    ) -> None:
+        """Update the receiver's last known state embedding."""
+        self._last_receiver_state[receiver_id] = embedding.copy()
 
     def _update_baseline(
         self, receiver_id: str, embedding: NDArray[np.float32]
@@ -170,11 +188,13 @@ class ScoringEngine:
             ScoreResult with computed metrics (including IEEE metrics)
         """
         baseline_before = self._get_baseline(receiver_id)
+        last_state = self._get_last_state(receiver_id)
         flags: list[str] = []
         cold_start = False
 
         # IEEE metrics
-        drift_l2: float | None = None
+        drift_l2_state: float | None = None  # Canonical: ||current - previous||
+        drift_l2_proxy: float | None = None  # Legacy: ||current - rolling_mean||
         iqx: float | None = None
         baseline_median: float | None = None
         rwi: float | None = None
@@ -191,14 +211,21 @@ class ScoringEngine:
             # Compute drift: how much did receiver deviate from baseline?
             drift_delta = 1.0 - cosine_similarity(receiver_embedding, baseline_before)
 
-            # Compute L2 drift (IEEE metric)
-            drift_l2 = compute_drift_l2(baseline_before, receiver_embedding)
+            # Compute proxy L2 drift (legacy): ||current - rolling_mean_baseline||
+            drift_l2_proxy = compute_drift_l2(baseline_before, receiver_embedding)
+
+            # Compute canonical state drift (IEEE metric): ||current - previous||
+            if last_state is not None:
+                drift_l2_state = compute_drift_l2(last_state, receiver_embedding)
 
             # Get baseline median for IQx computation
             baseline_median = self._get_drift_baseline_median(receiver_id)
 
-            # Compute IQx
-            iqx = compute_IQx(drift_l2, baseline_median, self.epsilon)
+            # Compute IQx using canonical drift if available, else proxy
+            drift_for_iqx = (
+                drift_l2_state if drift_l2_state is not None else drift_l2_proxy
+            )
+            iqx = compute_IQx(drift_for_iqx, baseline_median, self.epsilon)
 
             # Compute RWI if attack surface is provided
             if sender_attack_surface is not None:
@@ -212,9 +239,15 @@ class ScoringEngine:
                     alert_flag = True
                     flags.append("anomaly_alert")
 
-            # Update histories for future computations
-            self._update_drift_history(receiver_id, drift_l2)
+            # Update histories for future computations (use canonical drift if available)
+            drift_for_history = (
+                drift_l2_state if drift_l2_state is not None else drift_l2_proxy
+            )
+            self._update_drift_history(receiver_id, drift_for_history)
             self._update_iqx_history(receiver_id, iqx)
+
+            # Update last state for next canonical drift computation
+            self._update_last_state(receiver_id, receiver_embedding)
 
             # Update baseline with new embedding
             self._update_baseline(receiver_id, receiver_embedding)
@@ -239,9 +272,10 @@ class ScoringEngine:
             if influence_score > self.influence_threshold:
                 flags.append("high_influence")
 
-        # Still update baseline on cold start
+        # Still update baseline and last state on cold start
         if cold_start:
             self._update_baseline(receiver_id, receiver_embedding)
+            self._update_last_state(receiver_id, receiver_embedding)
 
         return ScoreResult(
             event_id=event_id,
@@ -251,7 +285,9 @@ class ScoringEngine:
             flags=flags,
             cold_start=cold_start,
             # IEEE metrics
-            drift_l2=drift_l2,
+            drift_l2_state=drift_l2_state,
+            drift_l2_proxy=drift_l2_proxy,
+            drift_l2=drift_l2_state if drift_l2_state is not None else drift_l2_proxy,
             IQx=iqx,
             baseline_median=baseline_median,
             RWI=rwi,
@@ -260,19 +296,22 @@ class ScoringEngine:
         )
 
     def reset_baseline(self, receiver_id: str) -> None:
-        """Reset a receiver's baseline."""
+        """Reset a receiver's baseline and state tracking."""
         if receiver_id in self._receiver_baselines:
             del self._receiver_baselines[receiver_id]
         if receiver_id in self._receiver_drift_history:
             del self._receiver_drift_history[receiver_id]
         if receiver_id in self._receiver_iqx_history:
             del self._receiver_iqx_history[receiver_id]
+        if receiver_id in self._last_receiver_state:
+            del self._last_receiver_state[receiver_id]
 
     def reset_all_baselines(self) -> None:
-        """Reset all baselines."""
+        """Reset all baselines and state tracking."""
         self._receiver_baselines.clear()
         self._receiver_drift_history.clear()
         self._receiver_iqx_history.clear()
+        self._last_receiver_state.clear()
 
     def get_receiver_drift_history(self, receiver_id: str) -> list[float]:
         """Get drift history for a receiver (for analysis/export)."""

@@ -34,19 +34,53 @@ This document provides the complete mathematical formulation for TraceIQ's influ
 
 ## Drift Detection
 
-### L2 Drift
+TraceIQ v0.3.0 computes two types of L2 drift to support different use cases:
 
-The L2 drift measures the magnitude of state change:
+### Canonical State Drift (`drift_l2_state`) - PRIMARY
 
-$$D_j(t) = \|s_j(t^+) - s_j(t^-)\|_2$$
+The **canonical** IEEE drift measures actual state change between consecutive responses:
+
+$$D_j^{\text{state}}(t) = \|s_j(t^+) - s_j(t^-)\|_2$$
 
 where:
-- $s_j(t^-)$ = receiver state before interaction
-- $s_j(t^+)$ = receiver state after interaction
+- $s_j(t^-)$ = receiver's embedding from **previous response**
+- $s_j(t^+)$ = receiver's embedding from **current response**
+
+This directly measures how much the receiver's output changed due to the interaction.
+
+**Used for:**
+- IEEE research metrics
+- IQx computation (primary)
+- Influence quantification
+
+### Proxy Baseline Drift (`drift_l2_proxy`) - LEGACY
+
+The **proxy** drift measures deviation from typical behavior:
+
+$$D_j^{\text{proxy}}(t) = \|s_j(t) - \bar{B}_j\|_2$$
+
+where:
+- $s_j(t)$ = current receiver embedding
+- $\bar{B}_j$ = rolling mean of receiver's recent embeddings (baseline)
+
+This measures whether current behavior is "typical" for this receiver.
+
+**Used for:**
+- Anomaly detection
+- Behavioral profiling
+- Legacy compatibility
+
+### Which Drift to Use?
+
+| Metric | Best For | When to Use |
+|--------|----------|-------------|
+| `drift_l2_state` | Influence measurement | Research, IEEE metrics, IQx/RWI |
+| `drift_l2_proxy` | Anomaly detection | Behavioral deviation, security monitoring |
+| `drift_l2` | Backward compatibility | Legacy code (maps to canonical if available) |
 
 ### Cosine Drift (Legacy)
 
-The original cosine-based drift:
+The original cosine-based drift (still available as `drift_delta`):
 
 $$\text{drift}_\text{cosine} = 1 - \frac{s_j(t^+) \cdot s_j(t^-)}{\|s_j(t^+)\| \|s_j(t^-)\|}$$
 
