@@ -27,6 +27,10 @@
 - **Intent**: Cannot determine if influence is intentional or benign
 - **Content analysis**: Does not parse meaning, only embedding similarity
 
+## Research Context
+
+TraceIQ is developed as part of research on AI-to-AI influence and multi-agent coordination.
+
 ## Quickstart
 
 ```python
