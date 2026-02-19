@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke test for TraceIQ v0.3.0.
+"""Smoke test for TraceIQ v0.3.1.
 
 This minimal example demonstrates all IEEE metrics without requiring
 sentence-transformers (uses MockEmbedder).
@@ -13,7 +13,7 @@ from traceiq import InfluenceTracker, TrackerConfig
 
 def main() -> None:
     """Run smoke test demonstrating all IEEE metrics."""
-    print("TraceIQ v0.3.0 Smoke Test")
+    print("TraceIQ v0.3.1 Smoke Test")
     print("=" * 50)
 
     # Configure tracker with IEEE metrics enabled

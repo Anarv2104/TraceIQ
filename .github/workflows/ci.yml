@@ -62,6 +62,11 @@ jobs:
         run: |
           python -m build
 
+      - name: Validate with twine
+        run: |
+          pip install twine
+          python -m twine check dist/*
+
       - name: Verify wheel
         run: |
           pip install dist/*.whl
