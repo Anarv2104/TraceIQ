@@ -2,9 +2,9 @@
 
 **Measure AI-to-AI Influence in Multi-Agent Systems**
 
-[![PyPI version](https://img.shields.io/pypi/v/traceiq.svg)](https://pypi.org/project/traceiq/)
-[![Python versions](https://img.shields.io/pypi/pyversions/traceiq.svg)](https://pypi.org/project/traceiq/)
-[![License](https://img.shields.io/pypi/l/traceiq.svg)](https://pypi.org/project/traceiq/)
+[![PyPI version](https://img.shields.io/pypi/v/traceiq.svg?cacheSeconds=60)](https://pypi.org/project/traceiq/)
+[![Python versions](https://img.shields.io/pypi/pyversions/traceiq.svg?cacheSeconds=60)](https://pypi.org/project/traceiq/)
+[![License](https://img.shields.io/pypi/l/traceiq.svg?cacheSeconds=60)](https://pypi.org/project/traceiq/)
 
 ---
 
