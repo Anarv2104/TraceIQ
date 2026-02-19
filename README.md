@@ -1,14 +1,10 @@
 # TraceIQ
 
-<p align="center">
-  <strong>Measure AI-to-AI Influence in Multi-Agent Systems</strong>
-</p>
+**Measure AI-to-AI Influence in Multi-Agent Systems**
 
-<p align="center">
-  <a href="https://pypi.org/project/traceiq/"><img src="https://img.shields.io/pypi/v/traceiq.svg" alt="PyPI version"></a>
-  <a href="https://pypi.org/project/traceiq/"><img src="https://img.shields.io/pypi/pyversions/traceiq.svg" alt="Python versions"></a>
-  <a href="https://github.com/Anarv2104/TraceIQ/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
-</p>
+[![PyPI version](https://img.shields.io/pypi/v/traceiq.svg)](https://pypi.org/project/traceiq/)
+[![Python versions](https://img.shields.io/pypi/pyversions/traceiq.svg)](https://pypi.org/project/traceiq/)
+[![License](https://img.shields.io/pypi/l/traceiq.svg)](https://pypi.org/project/traceiq/)
 
 ---
 
@@ -85,13 +81,13 @@ TraceIQ provides the tools to **detect, measure, and visualize** these influence
 pip install traceiq
 
 # With plotting support (matplotlib)
-pip install traceiq[plot]
+pip install "traceiq[plot]"
 
 # With real embeddings (sentence-transformers)
-pip install traceiq[embedding]
+pip install "traceiq[embedding]"
 
 # Everything included
-pip install traceiq[all]
+pip install "traceiq[all]"
 ```
 
 ### Development Installation
@@ -613,6 +609,4 @@ If you use TraceIQ in your research, please cite:
 
 ---
 
-<p align="center">
-  Built for AI safety researchers and multi-agent system developers
-</p>
+*Built for AI safety researchers and multi-agent system developers*
