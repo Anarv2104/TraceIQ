@@ -127,7 +127,9 @@ class TestComputeRiskScore:
 
     def test_components_included(self):
         """Components dict includes all factors."""
-        result = compute_risk_score(robust_z=2.0, drift=0.5, alignment=0.8, pr_window=0.5)
+        result = compute_risk_score(
+            robust_z=2.0, drift=0.5, alignment=0.8, pr_window=0.5
+        )
         assert "robust_z" in result.components
         assert "drift" in result.components
         assert "alignment" in result.components
@@ -256,4 +258,8 @@ class TestDefaultConstants:
         """Test default risk thresholds are reasonable."""
         assert DEFAULT_RISK_THRESHOLDS == (0.2, 0.5, 0.8)
         assert all(0 < t < 1 for t in DEFAULT_RISK_THRESHOLDS)
-        assert DEFAULT_RISK_THRESHOLDS[0] < DEFAULT_RISK_THRESHOLDS[1] < DEFAULT_RISK_THRESHOLDS[2]
+        assert (
+            DEFAULT_RISK_THRESHOLDS[0]
+            < DEFAULT_RISK_THRESHOLDS[1]
+            < DEFAULT_RISK_THRESHOLDS[2]
+        )

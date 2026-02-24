@@ -18,7 +18,7 @@ from traceiq.policy import PolicyEngine
 from traceiq.risk import RiskResult, compute_risk_score
 from traceiq.scoring import ScoringEngine
 from traceiq.storage import MemoryStorage, SQLiteStorage, StorageBackend
-from traceiq.validity import ValidityResult, check_validity
+from traceiq.validity import check_validity
 
 if TYPE_CHECKING:
     from traceiq.models import PropagationRiskResult
@@ -564,9 +564,7 @@ class InfluenceTracker:
             return 1.0
         return self._policy.get_trust(agent_id)
 
-    def get_low_trust_agents(
-        self, threshold: float = 0.5
-    ) -> list[tuple[str, float]]:
+    def get_low_trust_agents(self, threshold: float = 0.5) -> list[tuple[str, float]]:
         """Get agents with low trust scores.
 
         Args:

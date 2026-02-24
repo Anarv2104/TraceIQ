@@ -119,8 +119,12 @@ class ScoreResult(BaseModel):
     alert_flag: bool = Field(default=False, description="True if Z > anomaly_threshold")
 
     # Validity and confidence (v0.4.0)
-    valid: bool = Field(default=True, description="Whether metrics are valid (False during cold-start)")
-    invalid_reason: str | None = Field(default=None, description="Reason for invalidity (e.g., 'cold_start')")
+    valid: bool = Field(
+        default=True, description="Whether metrics are valid (False during cold-start)"
+    )
+    invalid_reason: str | None = Field(
+        default=None, description="Reason for invalidity (e.g., 'cold_start')"
+    )
     confidence: Literal["low", "medium", "high"] = Field(
         default="medium", description="Confidence level based on state quality"
     )
@@ -135,7 +139,8 @@ class ScoreResult(BaseModel):
 
     # Policy (v0.4.0)
     event_type: Literal["attempted", "applied", "blocked"] = Field(
-        default="applied", description="Whether event was attempted, applied, or blocked"
+        default="applied",
+        description="Whether event was attempted, applied, or blocked",
     )
     policy_action: Literal["allow", "verify", "quarantine", "block"] | None = Field(
         default=None, description="Policy action taken"

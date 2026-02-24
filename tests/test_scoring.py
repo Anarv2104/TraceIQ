@@ -247,7 +247,7 @@ class TestScoringEngine:
 
         # Next MIN_BASELINE_SAMPLES events should have IQx=None
         # because we don't have enough drift history yet
-        for i in range(MIN_BASELINE_SAMPLES):
+        for _i in range(MIN_BASELINE_SAMPLES):
             emb = np.random.rand(384).astype(np.float32)
             result = engine.compute_scores(
                 event_id=uuid4(),
@@ -318,7 +318,7 @@ class TestScoringEngine:
         engine = ScoringEngine(baseline_window=20, anomaly_threshold=2.0)
 
         # Build up history with normal interactions
-        for i in range(MIN_BASELINE_SAMPLES + 5):
+        for _i in range(MIN_BASELINE_SAMPLES + 5):
             emb = np.random.rand(384).astype(np.float32)
             engine.compute_scores(
                 event_id=uuid4(),

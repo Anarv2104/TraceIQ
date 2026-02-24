@@ -1,7 +1,7 @@
 """Tests for risk calibration functionality."""
 
-import pytest
 import numpy as np
+import pytest
 
 from traceiq.risk import (
     RiskThresholds,
@@ -125,7 +125,7 @@ class TestCalibrationCurveMonotonicity:
         risk_scores = np.random.beta(2, 5, n_samples)  # Skewed toward low
 
         # Outcomes correlated with risk (higher risk = more likely to fail)
-        outcomes = np.random.random(n_samples) < (risk_scores ** 2)
+        outcomes = np.random.random(n_samples) < (risk_scores**2)
 
         # Bin and compute observed rates
         n_bins = 5
@@ -142,8 +142,8 @@ class TestCalibrationCurveMonotonicity:
         # Higher bins should generally have higher failure rates
         if len(bin_rates) >= 3:
             # At least first half should be lower than second half on average
-            first_half_avg = np.mean(bin_rates[:len(bin_rates)//2])
-            second_half_avg = np.mean(bin_rates[len(bin_rates)//2:])
+            first_half_avg = np.mean(bin_rates[: len(bin_rates) // 2])
+            second_half_avg = np.mean(bin_rates[len(bin_rates) // 2 :])
             assert first_half_avg < second_half_avg
 
     def test_well_calibrated_predictions(self):

@@ -892,7 +892,9 @@ def report(db: str, run_id: str, output: str, fmt: str) -> None:
     is_flag=True,
     help="Output as JSON",
 )
-def calibrate_cmd(db: str, logs: str | None, target_alert_rate: float, as_json: bool) -> None:
+def calibrate_cmd(
+    db: str, logs: str | None, target_alert_rate: float, as_json: bool
+) -> None:
     """Calibrate risk thresholds from historical data."""
     from traceiq.risk import calibrate_thresholds
 
@@ -924,7 +926,9 @@ def calibrate_cmd(db: str, logs: str | None, target_alert_rate: float, as_json: 
                     risk_scores.append(score.risk_score)
 
     if len(risk_scores) < 10:
-        console.print("[yellow]Insufficient data for calibration (need at least 10 samples)[/yellow]")
+        console.print(
+            "[yellow]Insufficient data for calibration (need at least 10 samples)[/yellow]"
+        )
         return
 
     # Calibrate thresholds

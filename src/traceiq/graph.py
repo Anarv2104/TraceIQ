@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import networkx as nx
 import numpy as np
@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from traceiq.models import InteractionEvent, PropagationRiskResult, ScoreResult
-    from traceiq.schema import TraceIQEvent
 
 
 class InfluenceGraph:
@@ -457,9 +456,7 @@ class InfluenceGraph:
             if score.IQx is not None:
                 if use_bounded_weights:
                     # Use bounded sigmoid transformation
-                    conf = confidence_weight(
-                        getattr(score, "confidence", "medium")
-                    )
+                    conf = confidence_weight(getattr(score, "confidence", "medium"))
                     alignment = max(0, score.influence_score)  # Non-negative
                     weight = bounded_iqx_weight(score.IQx) * alignment * conf
                 else:

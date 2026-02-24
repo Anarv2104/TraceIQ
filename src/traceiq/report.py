@@ -160,8 +160,8 @@ def _build_report_data(
         "generated_at": datetime.now().isoformat(),
         "summary": {
             "total_events": total_events,
-            "unique_senders": len(set(e.sender_id for e in events)),
-            "unique_receivers": len(set(e.receiver_id for e in events)),
+            "unique_senders": len({e.sender_id for e in events}),
+            "unique_receivers": len({e.receiver_id for e in events}),
             "alert_count": alert_count,
         },
         "top_risky_agents": top_agents,
@@ -174,34 +174,34 @@ def _build_report_data(
 def _write_markdown_report(data: dict[str, Any], output_path: Path) -> None:
     """Write report in Markdown format."""
     lines = [
-        f"# TraceIQ Risk Report",
-        f"",
+        "# TraceIQ Risk Report",
+        "",
         f"**Run ID:** {data['run_id']}",
-        f"",
+        "",
         f"**Generated:** {data['generated_at']}",
-        f"",
-        f"---",
-        f"",
-        f"## Summary",
-        f"",
-        f"| Metric | Value |",
-        f"|--------|-------|",
+        "",
+        "---",
+        "",
+        "## Summary",
+        "",
+        "| Metric | Value |",
+        "|--------|-------|",
         f"| Total Events | {data['summary']['total_events']} |",
         f"| Unique Senders | {data['summary']['unique_senders']} |",
         f"| Unique Receivers | {data['summary']['unique_receivers']} |",
         f"| Alert Count | {data['summary']['alert_count']} |",
-        f"",
-        f"---",
-        f"",
-        f"## Top Risky Agents",
-        f"",
+        "",
+        "---",
+        "",
+        "## Top Risky Agents",
+        "",
     ]
 
     if data["top_risky_agents"]:
         lines.extend(
             [
-                f"| Rank | Agent | Total Risk | Events | Avg Risk |",
-                f"|------|-------|------------|--------|----------|",
+                "| Rank | Agent | Total Risk | Events | Avg Risk |",
+                "|------|-------|------------|--------|----------|",
             ]
         )
         for i, agent in enumerate(data["top_risky_agents"], 1):
@@ -214,19 +214,19 @@ def _write_markdown_report(data: dict[str, Any], output_path: Path) -> None:
 
     lines.extend(
         [
-            f"",
-            f"---",
-            f"",
-            f"## Top Risky Edges",
-            f"",
+            "",
+            "---",
+            "",
+            "## Top Risky Edges",
+            "",
         ]
     )
 
     if data["top_risky_edges"]:
         lines.extend(
             [
-                f"| Sender | Receiver | Events | Mean Risk | Max Risk |",
-                f"|--------|----------|--------|-----------|----------|",
+                "| Sender | Receiver | Events | Mean Risk | Max Risk |",
+                "|--------|----------|--------|-----------|----------|",
             ]
         )
         for edge in data["top_risky_edges"]:
@@ -239,13 +239,13 @@ def _write_markdown_report(data: dict[str, Any], output_path: Path) -> None:
 
     lines.extend(
         [
-            f"",
-            f"---",
-            f"",
-            f"## Policy Effectiveness",
-            f"",
-            f"| Metric | Value |",
-            f"|--------|-------|",
+            "",
+            "---",
+            "",
+            "## Policy Effectiveness",
+            "",
+            "| Metric | Value |",
+            "|--------|-------|",
             f"| Total Events | {data['policy_effectiveness']['total_events']} |",
             f"| Attempted | {data['policy_effectiveness']['attempted_count']} |",
             f"| Applied | {data['policy_effectiveness']['applied_count']} |",
@@ -253,19 +253,19 @@ def _write_markdown_report(data: dict[str, Any], output_path: Path) -> None:
             f"| Block Rate | {data['policy_effectiveness']['block_rate']:.2%} |",
             f"| Alert Count | {data['policy_effectiveness']['alert_count']} |",
             f"| Alert Rate (Applied) | {data['policy_effectiveness']['alert_rate_applied']:.2%} |",
-            f"",
-            f"---",
-            f"",
-            f"## Recent Alerts",
-            f"",
+            "",
+            "---",
+            "",
+            "## Recent Alerts",
+            "",
         ]
     )
 
     if data["recent_alerts"]:
         lines.extend(
             [
-                f"| Event ID | Sender | Receiver | Z-Score | IQx | Risk |",
-                f"|----------|--------|----------|---------|-----|------|",
+                "| Event ID | Sender | Receiver | Z-Score | IQx | Risk |",
+                "|----------|--------|----------|---------|-----|------|",
             ]
         )
         for alert in data["recent_alerts"]:
@@ -354,35 +354,38 @@ def plot_risk_calibration_curve(
     try:
         import matplotlib.pyplot as plt
         import numpy as np
-    except ImportError:
+    except ImportError as err:
         raise ImportError(
             "matplotlib and numpy required for plotting. "
             "Install with: pip install 'traceiq[plot]'"
-        )
+        ) from err
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Filter to valid pairs
     valid_pairs = [
-        (r, o) for r, o in zip(risk_scores, outcomes) if r is not None
+        (r, o) for r, o in zip(risk_scores, outcomes, strict=False) if r is not None
     ]
 
     if len(valid_pairs) < n_bins:
         # Not enough data for meaningful calibration
         fig, ax = plt.subplots(figsize=(8, 6))
         ax.text(
-            0.5, 0.5,
+            0.5,
+            0.5,
             f"Insufficient data ({len(valid_pairs)} samples)\n"
             f"Need at least {n_bins} for calibration curve",
-            ha='center', va='center', fontsize=12
+            ha="center",
+            va="center",
+            fontsize=12,
         )
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
-        ax.set_xlabel('Predicted Risk Score')
-        ax.set_ylabel('Observed Failure Rate')
-        ax.set_title('Risk Calibration Curve')
-        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        ax.set_xlabel("Predicted Risk Score")
+        ax.set_ylabel("Observed Failure Rate")
+        ax.set_title("Risk Calibration Curve")
+        plt.savefig(output_path, dpi=150, bbox_inches="tight")
         plt.close()
         return
 
@@ -413,34 +416,39 @@ def plot_risk_calibration_curve(
     ax.plot(
         np.array(bin_centers)[valid_mask],
         np.array(observed_rates)[valid_mask],
-        'o-', color='blue', label='Observed', markersize=8
+        "o-",
+        color="blue",
+        label="Observed",
+        markersize=8,
     )
 
     # Plot perfect calibration line
-    ax.plot([0, 1], [0, 1], 'k--', alpha=0.5, label='Perfect calibration')
+    ax.plot([0, 1], [0, 1], "k--", alpha=0.5, label="Perfect calibration")
 
     # Labels and title
-    ax.set_xlabel('Predicted Risk Score', fontsize=12)
-    ax.set_ylabel('Observed Failure Rate', fontsize=12)
-    ax.set_title('Risk Calibration Curve', fontsize=14)
-    ax.legend(loc='upper left')
+    ax.set_xlabel("Predicted Risk Score", fontsize=12)
+    ax.set_ylabel("Observed Failure Rate", fontsize=12)
+    ax.set_title("Risk Calibration Curve", fontsize=14)
+    ax.legend(loc="upper left")
     ax.set_xlim(-0.05, 1.05)
     ax.set_ylim(-0.05, 1.05)
     ax.grid(True, alpha=0.3)
 
     # Add sample counts as annotations
-    for i, (x, y, count) in enumerate(zip(bin_centers, observed_rates, bin_counts)):
+    for _i, (x, y, count) in enumerate(
+        zip(bin_centers, observed_rates, bin_counts, strict=False)
+    ):
         if not np.isnan(y) and count > 0:
             ax.annotate(
-                f'n={count}',
+                f"n={count}",
                 xy=(x, y),
                 xytext=(0, 10),
-                textcoords='offset points',
-                ha='center',
+                textcoords="offset points",
+                ha="center",
                 fontsize=8,
-                alpha=0.7
+                alpha=0.7,
             )
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()

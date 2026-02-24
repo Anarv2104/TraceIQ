@@ -1,7 +1,5 @@
 """Tests for the weights module."""
 
-import math
-
 import pytest
 
 from traceiq.weights import (

@@ -10,27 +10,61 @@ permissions:
   id-token: write  # Required for OIDC trusted publishing
 
 jobs:
+  # Run tests first - must pass before publishing
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,dev]"
+
+      - name: Run ruff check
+        run: |
+          ruff check src/ tests/
+
+      - name: Run ruff format check
+        run: |
+          ruff format --check src/ tests/
+
+      - name: Run pytest
+        run: |
+          pytest -v
+
+      - name: Run smoke test
+        run: |
+          python examples/smoke.py
+
   build:
     runs-on: ubuntu-latest
+    needs: test  # Only build after tests pass
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Install build tools
         run: |
           python -m pip install --upgrade pip
-          pip install build twine
+          pip install build
 
       - name: Build package
         run: python -m build
-
-      - name: Validate with twine
-        run: python -m twine check dist/*
 
       - name: Verify wheel installation
         run: |
