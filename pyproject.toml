@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "traceiq"
-version = "0.3.5"
+version = "0.3.6"
 description = "Measure AI-to-AI influence in multi-agent systems"
 readme = "README.md"
 license = {text = "MIT"}
@@ -48,10 +48,8 @@ research = [
     "matplotlib>=3.7",
 ]
 all = [
-    "sentence-transformers>=2.2",
-    "matplotlib>=3.7",
-    "pandas>=2.0",
-    "scipy>=1.10",
+    "traceiq[embedding]",
+    "traceiq[research]",
 ]
 dev = [
     "pytest>=7.0",

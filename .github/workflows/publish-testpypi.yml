@@ -25,10 +25,19 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+            ${{ runner.os }}-pip-
+
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[all,dev]"
+          python -m pip install --upgrade pip --timeout 120 --retries 5
+          pip install -e ".[dev]" --timeout 120 --retries 5
 
       - name: Run ruff check
         run: |
@@ -58,17 +67,26 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-build-3.11-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-build-3.11-
+            ${{ runner.os }}-pip-
+
       - name: Install build tools
         run: |
-          python -m pip install --upgrade pip
-          pip install build
+          python -m pip install --upgrade pip --timeout 120 --retries 5
+          pip install build --timeout 120 --retries 5
 
       - name: Build package
         run: python -m build
 
       - name: Verify wheel installation
         run: |
-          pip install dist/*.whl
+          pip install dist/*.whl --timeout 120 --retries 5
           python -c "import traceiq; print(f'traceiq {traceiq.__version__}')"
           traceiq --version
 
