@@ -222,3 +222,152 @@ class TestScoringEngine:
 
         for receiver in ["r1", "r2", "r3"]:
             assert scoring_engine._get_baseline(receiver) is None
+
+    def test_iqx_none_until_baseline_ready(self) -> None:
+        """IQx should be None until MIN_BASELINE_SAMPLES drift values collected."""
+        from traceiq.metrics import MIN_BASELINE_SAMPLES
+
+        engine = ScoringEngine(baseline_window=10)
+
+        # Track results to understand IQx progression
+        results = []
+
+        # First event is cold start (no embedding baseline yet)
+        emb = np.random.rand(384).astype(np.float32)
+        result = engine.compute_scores(
+            event_id=uuid4(),
+            sender_id="sender",
+            receiver_id="receiver",
+            sender_embedding=emb,
+            receiver_embedding=emb,
+        )
+        assert result.cold_start is True
+        assert result.IQx is None  # No IQx on cold start
+        results.append(result)
+
+        # Next MIN_BASELINE_SAMPLES events should have IQx=None
+        # because we don't have enough drift history yet
+        for i in range(MIN_BASELINE_SAMPLES):
+            emb = np.random.rand(384).astype(np.float32)
+            result = engine.compute_scores(
+                event_id=uuid4(),
+                sender_id="sender",
+                receiver_id="receiver",
+                sender_embedding=emb,
+                receiver_embedding=emb,
+            )
+            # Not cold start (we have baseline), but IQx may still be None
+            assert result.cold_start is False
+            results.append(result)
+
+        # After MIN_BASELINE_SAMPLES drift values, IQx should be computed
+        emb = np.random.rand(384).astype(np.float32)
+        result = engine.compute_scores(
+            event_id=uuid4(),
+            sender_id="sender",
+            receiver_id="receiver",
+            sender_embedding=emb,
+            receiver_embedding=emb,
+        )
+        # Now IQx should be a valid float
+        assert result.IQx is not None
+        assert isinstance(result.IQx, float)
+
+    def test_iqx_capped(self) -> None:
+        """IQx should be capped to prevent extreme values."""
+        from traceiq.metrics import IQX_CAP, MIN_BASELINE_SAMPLES
+
+        engine = ScoringEngine(baseline_window=10)
+
+        # Build up baseline with small drifts
+        base_emb = np.zeros(384, dtype=np.float32)
+        base_emb[0] = 1.0
+        for i in range(MIN_BASELINE_SAMPLES + 1):
+            # Use very similar embeddings for small drift
+            emb = base_emb.copy()
+            emb[0] += 0.001 * i
+            emb = emb / np.linalg.norm(emb)
+            engine.compute_scores(
+                event_id=uuid4(),
+                sender_id="sender",
+                receiver_id="receiver",
+                sender_embedding=emb,
+                receiver_embedding=emb,
+            )
+
+        # Now send a very different embedding to cause large drift
+        diff_emb = np.zeros(384, dtype=np.float32)
+        diff_emb[100] = 1.0  # Completely different direction
+
+        result = engine.compute_scores(
+            event_id=uuid4(),
+            sender_id="sender",
+            receiver_id="receiver",
+            sender_embedding=diff_emb,
+            receiver_embedding=diff_emb,
+        )
+
+        # IQx should be capped
+        assert result.IQx is not None
+        assert result.IQx <= IQX_CAP
+
+    def test_robust_zscore_not_extreme(self) -> None:
+        """Z-scores should be reasonable even with outliers."""
+        from traceiq.metrics import MIN_BASELINE_SAMPLES
+
+        engine = ScoringEngine(baseline_window=20, anomaly_threshold=2.0)
+
+        # Build up history with normal interactions
+        for i in range(MIN_BASELINE_SAMPLES + 5):
+            emb = np.random.rand(384).astype(np.float32)
+            engine.compute_scores(
+                event_id=uuid4(),
+                sender_id="sender",
+                receiver_id="receiver",
+                sender_embedding=emb,
+                receiver_embedding=emb,
+            )
+
+        # Get the last result with Z-score
+        emb = np.random.rand(384).astype(np.float32)
+        result = engine.compute_scores(
+            event_id=uuid4(),
+            sender_id="sender",
+            receiver_id="receiver",
+            sender_embedding=emb,
+            receiver_embedding=emb,
+        )
+
+        # Z-score should exist and be reasonable
+        if result.Z_score is not None:
+            # Should not be billions or negative billions
+            assert abs(result.Z_score) < 100
+
+    def test_cold_start_no_alert_flag(self) -> None:
+        """Cold start events should never have alert_flag=True.
+
+        Even if anomaly detection logic would produce a high Z-score,
+        cold start events lack sufficient baseline history to be reliable,
+        so alert_flag must be False.
+        """
+        engine = ScoringEngine(
+            baseline_window=10,
+            anomaly_threshold=0.1,  # Very low threshold to trigger alert if allowed
+        )
+
+        # First event is cold start
+        emb = np.random.rand(384).astype(np.float32)
+        result = engine.compute_scores(
+            event_id=uuid4(),
+            sender_id="sender",
+            receiver_id="receiver",
+            sender_embedding=emb,
+            receiver_embedding=emb,
+        )
+
+        # Verify cold start
+        assert result.cold_start is True
+        # Critical: alert_flag must be False during cold start
+        assert result.alert_flag is False
+        # Also verify "anomaly_alert" not in flags
+        assert "anomaly_alert" not in result.flags

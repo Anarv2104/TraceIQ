@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "traceiq"
-version = "0.3.3"
+version = "0.3.4"
 description = "Measure AI-to-AI influence in multi-agent systems"
 readme = "README.md"
 license = {text = "MIT"}

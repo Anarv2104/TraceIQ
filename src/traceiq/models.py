@@ -54,6 +54,29 @@ class TrackerConfig(BaseModel):
         default=None, description="Path to JSON capability registry file"
     )
 
+    # Risk scoring settings (v0.4.0)
+    enable_risk_scoring: bool = Field(
+        default=True, description="Enable risk score computation"
+    )
+    enable_policy: bool = Field(
+        default=False, description="Enable policy engine for mitigation"
+    )
+    baseline_k: int = Field(
+        default=20, gt=0, description="Minimum samples for valid metrics (cold-start)"
+    )
+    risk_thresholds: tuple[float, float, float] = Field(
+        default=(0.2, 0.5, 0.8),
+        description="(low, medium, high) thresholds for risk level classification",
+    )
+
+    # Policy settings (v0.4.0)
+    enable_trust_decay: bool = Field(
+        default=True, description="Enable trust decay on policy violations"
+    )
+    trust_decay_rate: float = Field(
+        default=0.1, ge=0.0, le=1.0, description="Trust decay amount per violation"
+    )
+
     # Misc
     random_seed: int | None = None
 
@@ -89,8 +112,34 @@ class ScoreResult(BaseModel):
         default=None, description="Receiver's baseline median drift"
     )
     RWI: float | None = Field(default=None, description="Risk-Weighted Influence")
-    Z_score: float | None = Field(default=None, description="Anomaly Z-score")
+    Z_score: float | None = Field(
+        default=None,
+        description="Robust anomaly Z-score computed via MAD (see robust_z alias in tracker output)",
+    )
     alert_flag: bool = Field(default=False, description="True if Z > anomaly_threshold")
+
+    # Validity and confidence (v0.4.0)
+    valid: bool = Field(default=True, description="Whether metrics are valid (False during cold-start)")
+    invalid_reason: str | None = Field(default=None, description="Reason for invalidity (e.g., 'cold_start')")
+    confidence: Literal["low", "medium", "high"] = Field(
+        default="medium", description="Confidence level based on state quality"
+    )
+
+    # Risk scoring (v0.4.0)
+    risk_score: float | None = Field(
+        default=None, description="Bounded risk score in [0, 1]"
+    )
+    risk_level: Literal["unknown", "low", "medium", "high", "critical"] = Field(
+        default="unknown", description="Categorical risk level"
+    )
+
+    # Policy (v0.4.0)
+    event_type: Literal["attempted", "applied", "blocked"] = Field(
+        default="applied", description="Whether event was attempted, applied, or blocked"
+    )
+    policy_action: Literal["allow", "verify", "quarantine", "block"] | None = Field(
+        default=None, description="Policy action taken"
+    )
 
 
 class SummaryReport(BaseModel):

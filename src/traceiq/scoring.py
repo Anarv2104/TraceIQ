@@ -37,10 +37,11 @@ from uuid import UUID
 import numpy as np
 
 from traceiq.metrics import (
+    MIN_BASELINE_SAMPLES,
     compute_drift_l2,
     compute_IQx,
     compute_RWI,
-    compute_z_score,
+    compute_z_score_robust,
     rolling_mean,
     rolling_median,
     rolling_std,
@@ -221,20 +222,31 @@ class ScoringEngine:
             # Get baseline median for IQx computation
             baseline_median = self._get_drift_baseline_median(receiver_id)
 
+            # Check if we have enough baseline samples for meaningful IQx
+            drift_history_len = len(self._receiver_drift_history.get(receiver_id, []))
+            baseline_ready = drift_history_len >= MIN_BASELINE_SAMPLES
+
             # Compute IQx using canonical drift if available, else proxy
             drift_for_iqx = (
                 drift_l2_state if drift_l2_state is not None else drift_l2_proxy
             )
-            iqx = compute_IQx(drift_for_iqx, baseline_median, self.epsilon)
 
-            # Compute RWI if attack surface is provided
-            if sender_attack_surface is not None:
+            if not baseline_ready:
+                # Don't compute IQx until baseline established
+                # Note: cold_start remains False since we do have embedding baseline
+                iqx = None
+            else:
+                # Compute IQx with baseline floor and cap for numerical stability
+                iqx = compute_IQx(drift_for_iqx, baseline_median, self.epsilon)
+
+            # Compute RWI if attack surface is provided and IQx is valid
+            if sender_attack_surface is not None and iqx is not None:
                 rwi = compute_RWI(iqx, sender_attack_surface)
 
-            # Get IQx stats and compute Z-score
-            iqx_mean, iqx_std = self._get_iqx_stats(receiver_id)
-            if iqx_mean > 0 or iqx_std > 0:  # Have some history
-                z_score = compute_z_score(iqx, iqx_mean, iqx_std, self.epsilon)
+            # Compute robust Z-score using MAD (if we have valid IQx and history)
+            iqx_history = self._receiver_iqx_history.get(receiver_id, [])
+            if iqx is not None and len(iqx_history) >= MIN_BASELINE_SAMPLES:
+                z_score = compute_z_score_robust(iqx, iqx_history, self.epsilon)
                 if abs(z_score) > self.anomaly_threshold:
                     alert_flag = True
                     flags.append("anomaly_alert")
@@ -244,7 +256,9 @@ class ScoringEngine:
                 drift_l2_state if drift_l2_state is not None else drift_l2_proxy
             )
             self._update_drift_history(receiver_id, drift_for_history)
-            self._update_iqx_history(receiver_id, iqx)
+            # Only update IQx history with valid (non-None) values
+            if iqx is not None:
+                self._update_iqx_history(receiver_id, iqx)
 
             # Update last state for next canonical drift computation
             self._update_last_state(receiver_id, receiver_embedding)

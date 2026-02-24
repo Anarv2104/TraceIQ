@@ -20,7 +20,17 @@ from traceiq.models import (
     SummaryReport,
     TrackerConfig,
 )
+from traceiq.policy import PolicyEngine
+from traceiq.risk import (
+    RiskResult,
+    RiskThresholds,
+    assign_risk_level,
+    calibrate_thresholds,
+    compute_risk_score,
+)
+from traceiq.schema import TraceIQEvent, compute_state_quality
 from traceiq.tracker import InfluenceTracker
+from traceiq.validity import ValidityResult, check_validity
 
 __version__ = _get_version("traceiq")
 
@@ -35,6 +45,20 @@ __all__ = [
     "TrackerConfig",
     "AgentCapabilities",
     "PropagationRiskResult",
+    # Extended schema (v0.4.0)
+    "TraceIQEvent",
+    "compute_state_quality",
+    # Validity (v0.4.0)
+    "ValidityResult",
+    "check_validity",
+    # Risk scoring (v0.4.0)
+    "RiskResult",
+    "RiskThresholds",
+    "compute_risk_score",
+    "calibrate_thresholds",
+    "assign_risk_level",
+    # Policy (v0.4.0)
+    "PolicyEngine",
     # Metrics functions
     "compute_drift_l2",
     "compute_IQx",

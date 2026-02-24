@@ -88,6 +88,47 @@ $$\text{drift}_\text{cosine} = 1 - \frac{s_j(t^+) \cdot s_j(t^-)}{\|s_j(t^+)\| \
 
 ---
 
+## Counterfactual Influence
+
+### Formal Definition
+
+The **counterfactual influence** of agent $i$ on agent $j$ at time $t$ is formally defined as:
+
+$$I_{\text{CF}}(i \to j, t) = D(S_j(t^+), S_j^{\emptyset}(t^+))$$
+
+where:
+- $S_j(t^+)$ is agent $j$'s state after receiving message $M_i$ from agent $i$
+- $S_j^{\emptyset}(t^+)$ is the **counterfactual** state agent $j$ would have had without receiving $M_i$
+- $D(\cdot, \cdot)$ is a distance metric (L2 norm)
+
+**Interpretation**: Counterfactual influence measures the difference between what happened and what *would have happened* without the interaction.
+
+### Observable Approximation
+
+Computing $S_j^{\emptyset}(t^+)$ requires running the agent without the message, which is expensive and often impractical. TraceIQ uses an **observable approximation**:
+
+$$\hat{I}(i \to j, t) = D(S_j(t^+), S_j(t^-))$$
+
+where $S_j(t^-)$ is agent $j$'s state immediately before receiving $M_i$.
+
+### Justification
+
+Under the **local stability assumption** (in the absence of external input, agent behavior is locally stable over short time intervals):
+
+$$S_j^{\emptyset}(t^+) \approx S_j(t^-)$$
+
+This approximation measures the actual state change, attributing it to the interaction. The error in this approximation is bounded by the agent's baseline variance.
+
+### Relationship to IQx
+
+The Influence Quotient (IQx) normalizes the observable influence by baseline:
+
+$$\text{IQx}(i \to j, t) = \frac{\hat{I}(i \to j, t)}{B_j + \varepsilon} = \frac{D(S_j(t^+), S_j(t^-))}{B_j + \varepsilon}$$
+
+This connects the theoretical counterfactual definition to the practical IQx metric.
+
+---
+
 ## Influence Quotient (IQx)
 
 The Influence Quotient normalizes drift by receiver baseline:

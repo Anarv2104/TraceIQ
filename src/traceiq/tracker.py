@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
+from uuid import uuid4
 
 import numpy as np
 
@@ -13,11 +14,15 @@ from traceiq.export import export_combined_csv, export_combined_jsonl
 from traceiq.graph import InfluenceGraph
 from traceiq.metrics import compute_accumulated_influence
 from traceiq.models import InteractionEvent, ScoreResult, SummaryReport, TrackerConfig
+from traceiq.policy import PolicyEngine
+from traceiq.risk import RiskResult, compute_risk_score
 from traceiq.scoring import ScoringEngine
 from traceiq.storage import MemoryStorage, SQLiteStorage, StorageBackend
+from traceiq.validity import ValidityResult, check_validity
 
 if TYPE_CHECKING:
     from traceiq.models import PropagationRiskResult
+    from traceiq.schema import TraceIQEvent
 
 
 class InfluenceTracker:
@@ -79,6 +84,14 @@ class InfluenceTracker:
         if self.config.capability_registry_path:
             self._capabilities.load_from_file(self.config.capability_registry_path)
 
+        # Initialize policy engine (v0.4.0)
+        self._policy: PolicyEngine | None = None
+        if self.config.enable_policy:
+            self._policy = PolicyEngine(
+                enable_trust_decay=self.config.enable_trust_decay,
+                trust_decay_rate=self.config.trust_decay_rate,
+            )
+
         # Set random seed if provided
         if self.config.random_seed is not None:
             np.random.seed(self.config.random_seed)
@@ -90,6 +103,13 @@ class InfluenceTracker:
         sender_content: str,
         receiver_content: str,
         metadata: dict[str, Any] | None = None,
+        # NEW: Optional TraceIQEvent for full schema (v0.4.0)
+        event: TraceIQEvent | None = None,
+        # NEW: Run tracking (v0.4.0)
+        run_id: str | None = None,
+        task_id: str | None = None,
+        # NEW: State quality hint (v0.4.0)
+        state_quality: Literal["low", "medium", "high"] | None = None,
     ) -> dict[str, Any]:
         """
         Track a single interaction event.
@@ -100,12 +120,28 @@ class InfluenceTracker:
             sender_content: Content from sender (message, output, etc.)
             receiver_content: Receiver's response or updated state
             metadata: Optional metadata dict
+            event: Optional TraceIQEvent for full schema support
+            run_id: Optional run identifier for experiment tracking
+            task_id: Optional task identifier within a run
+            state_quality: Optional state quality hint (auto-computed if not provided)
 
         Returns:
-            Dict with event_id, scores, flags, and IEEE metrics
+            Dict with event_id, scores, flags, and metrics (including v0.4.0 fields)
         """
-        # Create event
-        event = InteractionEvent(
+        # Use provided event or create from params
+        if event is not None:
+            # Extract fields from TraceIQEvent
+            sender_id = event.sender_id
+            receiver_id = event.receiver_id
+            sender_content = event.sender_content
+            receiver_content = event.receiver_output
+            metadata = event.metadata
+            run_id = event.run_id
+            task_id = event.task_id
+            state_quality = event.state_quality
+
+        # Create standard event
+        interaction_event = InteractionEvent(
             sender_id=sender_id,
             receiver_id=receiver_id,
             sender_content=sender_content,
@@ -124,7 +160,7 @@ class InfluenceTracker:
 
         # Compute scores (including IEEE metrics)
         score = self._scorer.compute_scores(
-            event_id=event.event_id,
+            event_id=interaction_event.event_id,
             sender_id=sender_id,
             receiver_id=receiver_id,
             sender_embedding=sender_result.embedding,
@@ -138,15 +174,81 @@ class InfluenceTracker:
         if receiver_result.was_truncated:
             score.flags.append("receiver_truncated")
 
-        # Store
-        self._storage.store_event(event)
-        self._storage.store_score(score)
+        # Compute validity (v0.4.0)
+        baseline_samples = len(
+            self._scorer._receiver_drift_history.get(receiver_id, [])
+        )
+        effective_state_quality = state_quality or "medium"
+        validity = check_validity(
+            baseline_samples=baseline_samples,
+            state_quality=effective_state_quality,
+            baseline_k=self.config.baseline_k,
+        )
 
-        # Update graph
-        self._graph.add_interaction(event, score)
+        # Update score with validity info
+        score.valid = validity.valid
+        score.invalid_reason = validity.invalid_reason
+        score.confidence = validity.confidence
+
+        # Override alert_flag if not valid (critical: no alerts on cold start)
+        if not validity.valid:
+            score.alert_flag = False
+            if "anomaly_alert" in score.flags:
+                score.flags.remove("anomaly_alert")
+
+        # Compute risk score (v0.4.0)
+        risk_result: RiskResult | None = None
+        if self.config.enable_risk_scoring:
+            # Get current PR for risk computation
+            pr_window = self._graph.compute_spectral_radius("iqx")
+
+            risk_result = compute_risk_score(
+                robust_z=score.Z_score,
+                drift=score.drift_l2_state or score.drift_l2_proxy,
+                alignment=score.influence_score,
+                pr_window=pr_window,
+                valid=validity.valid,
+                thresholds=self.config.risk_thresholds,
+            )
+            score.risk_score = risk_result.risk_score
+            score.risk_level = risk_result.risk_level
+
+        # Apply policy if enabled (v0.4.0)
+        policy_action: str | None = None
+        event_type: Literal["attempted", "applied", "blocked"] = "applied"
+
+        if self._policy is not None and risk_result is not None:
+            # Import here to avoid circular dependency
+            from traceiq.schema import TraceIQEvent as FullEvent
+
+            # Create TraceIQEvent for policy processing
+            full_event = FullEvent(
+                event_id=str(interaction_event.event_id),
+                run_id=run_id or str(uuid4()),
+                task_id=task_id,
+                sender_id=sender_id,
+                receiver_id=receiver_id,
+                sender_content=sender_content,
+                receiver_output=receiver_content,
+                metadata=metadata or {},
+            )
+
+            # Apply policy
+            updated_event = self._policy.apply_policy(full_event, risk_result)
+            policy_action = updated_event.policy_action
+            event_type = updated_event.event_type
+
+            score.policy_action = policy_action
+            score.event_type = event_type
+
+        # Only store and update graph if event is applied (not blocked)
+        if event_type != "blocked":
+            self._storage.store_event(interaction_event)
+            self._storage.store_score(score)
+            self._graph.add_interaction(interaction_event, score)
 
         return {
-            "event_id": str(event.event_id),
+            "event_id": str(interaction_event.event_id),
             "sender_id": sender_id,
             "receiver_id": receiver_id,
             "influence_score": score.influence_score,
@@ -154,19 +256,32 @@ class InfluenceTracker:
             "flags": score.flags,
             "cold_start": score.cold_start,
             # IEEE metrics (v0.3.0)
-            "drift_l2_state": score.drift_l2_state,  # Canonical: ||current - previous||
-            "drift_l2_proxy": score.drift_l2_proxy,  # Legacy: ||current - rolling_mean||
-            "drift_l2": score.drift_l2,  # Alias for backward compat
+            "drift_l2_state": score.drift_l2_state,
+            "drift_l2_proxy": score.drift_l2_proxy,
+            "drift_l2": score.drift_l2,
             "IQx": score.IQx,
             "baseline_median": score.baseline_median,
             "RWI": score.RWI,
             "Z_score": score.Z_score,
             "alert": score.alert_flag,
+            # NEW: v0.4.0 fields
+            "valid": score.valid,
+            "invalid_reason": score.invalid_reason,
+            "confidence": score.confidence,
+            "robust_z": score.Z_score,  # Alias for clarity
+            "risk_score": score.risk_score,
+            "risk_level": score.risk_level,
+            "policy_action": policy_action,
+            "event_type": event_type,
+            # Run tracking
+            "run_id": run_id,
+            "task_id": task_id,
         }
 
     def bulk_track(
         self,
         interactions: list[dict[str, Any]],
+        run_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         Track multiple interactions.
@@ -174,7 +289,8 @@ class InfluenceTracker:
         Args:
             interactions: List of dicts with keys:
                 - sender_id, receiver_id, sender_content, receiver_content
-                - Optional: metadata
+                - Optional: metadata, task_id
+            run_id: Optional run identifier for all interactions
 
         Returns:
             List of result dicts from track_event
@@ -187,6 +303,8 @@ class InfluenceTracker:
                 sender_content=interaction["sender_content"],
                 receiver_content=interaction["receiver_content"],
                 metadata=interaction.get("metadata"),
+                run_id=run_id,
+                task_id=interaction.get("task_id"),
             )
             results.append(result)
         return results
@@ -300,6 +418,11 @@ class InfluenceTracker:
         """Access the capability registry for agent security tracking."""
         return self._capabilities
 
+    @property
+    def policy(self) -> PolicyEngine | None:
+        """Access the policy engine (if enabled)."""
+        return self._policy
+
     # IEEE metrics methods (v0.3.0)
 
     def get_propagation_risk(self, weight_type: str = "iqx") -> float:
@@ -356,11 +479,16 @@ class InfluenceTracker:
 
         return compute_accumulated_influence(iqx_values)
 
-    def get_alerts(self, threshold: float | None = None) -> list[ScoreResult]:
+    def get_alerts(
+        self,
+        threshold: float | None = None,
+        valid_only: bool = True,
+    ) -> list[ScoreResult]:
         """Get all anomaly alerts.
 
         Args:
             threshold: Optional minimum Z-score threshold (overrides config)
+            valid_only: Only return alerts from valid metrics (default: True)
 
         Returns:
             List of ScoreResult with alert_flag=True, sorted by Z-score descending
@@ -369,6 +497,10 @@ class InfluenceTracker:
 
         # Filter for alerts
         alerts = [s for s in scores if s.alert_flag]
+
+        # Filter for valid metrics only (v0.4.0)
+        if valid_only:
+            alerts = [s for s in alerts if s.valid]
 
         # Apply threshold filter if provided
         if threshold is not None:
@@ -416,6 +548,36 @@ class InfluenceTracker:
         results.sort(key=lambda x: -x[1])
 
         return results[:top_n]
+
+    # v0.4.0 methods
+
+    def get_trust_score(self, agent_id: str) -> float:
+        """Get trust score for an agent.
+
+        Args:
+            agent_id: Agent identifier
+
+        Returns:
+            Trust score in [0, 1], or 1.0 if policy not enabled
+        """
+        if self._policy is None:
+            return 1.0
+        return self._policy.get_trust(agent_id)
+
+    def get_low_trust_agents(
+        self, threshold: float = 0.5
+    ) -> list[tuple[str, float]]:
+        """Get agents with low trust scores.
+
+        Args:
+            threshold: Trust threshold (default: 0.5)
+
+        Returns:
+            List of (agent_id, trust_score) tuples for agents below threshold
+        """
+        if self._policy is None:
+            return []
+        return self._policy.get_low_trust_agents(threshold)
 
     def close(self) -> None:
         """Close the tracker and release resources."""

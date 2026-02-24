@@ -285,6 +285,22 @@ Z = (IQx - mean) / (std + epsilon)
 
 Alert triggered when `|Z| > anomaly_threshold` (default: 2.0).
 
+#### Z_score vs robust_z Naming
+
+TraceIQ uses MAD-based (Median Absolute Deviation) robust Z-score computation internally:
+
+```
+robust_z = 0.6745 * (IQx - median) / (MAD + epsilon)
+```
+
+The constant 0.6745 makes MAD consistent with standard deviation for normal distributions.
+
+In the API:
+- **`Z_score`**: Legacy field name in `ScoreResult`
+- **`robust_z`**: Canonical alias returned in `track_event()` result dict
+
+Both fields contain identical values computed via the robust MAD method. The dual naming exists for backward compatibility while signaling the recommended field name.
+
 ### Example Usage
 
 ```python

@@ -792,5 +792,231 @@ def plot_iqx_heatmap_cmd(db: str, output: str) -> None:
     console.print(f"[green]Saved IQx heatmap to:[/green] {output}")
 
 
+# v0.4.0 commands
+
+
+@cli.command("report")
+@click.option(
+    "--db",
+    type=click.Path(exists=True),
+    default="traceiq.db",
+    help="Path to SQLite database file",
+)
+@click.option(
+    "--run-id",
+    type=str,
+    default="default",
+    help="Run ID to include in report",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    required=True,
+    help="Output file path",
+)
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["markdown", "json"]),
+    default="markdown",
+    help="Output format",
+)
+def report(db: str, run_id: str, output: str, fmt: str) -> None:
+    """Generate a risk report from tracked data."""
+    from pathlib import Path
+
+    from traceiq.report import generate_risk_report
+    from traceiq.schema import TraceIQEvent
+
+    config = TrackerConfig(
+        storage_backend="sqlite",
+        storage_path=db,
+    )
+
+    with InfluenceTracker(config=config, use_mock_embedder=True) as tracker:
+        events = tracker.get_events()
+        scores = tracker.get_scores()
+
+        if not events:
+            console.print("[yellow]No events found in database[/yellow]")
+            return
+
+        # Convert InteractionEvent to TraceIQEvent for report
+        trace_events = [
+            TraceIQEvent(
+                event_id=str(e.event_id),
+                run_id=run_id,
+                sender_id=e.sender_id,
+                receiver_id=e.receiver_id,
+                sender_content=e.sender_content,
+                receiver_output=e.receiver_content,
+                ts=e.timestamp.timestamp(),
+                metadata=e.metadata,
+            )
+            for e in events
+        ]
+
+        generate_risk_report(
+            events=trace_events,
+            scores=scores,
+            run_id=run_id,
+            output_path=Path(output),
+            format=fmt,
+        )
+
+    console.print(f"[green]Report generated at:[/green] {output}")
+
+
+@cli.command("calibrate")
+@click.option(
+    "--db",
+    type=click.Path(exists=True),
+    default="traceiq.db",
+    help="Path to SQLite database file",
+)
+@click.option(
+    "--logs",
+    type=click.Path(exists=True),
+    help="Path to JSONL logs file (alternative to --db)",
+)
+@click.option(
+    "--target-alert-rate",
+    type=float,
+    default=0.01,
+    help="Target alert rate (default: 1%)",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Output as JSON",
+)
+def calibrate_cmd(db: str, logs: str | None, target_alert_rate: float, as_json: bool) -> None:
+    """Calibrate risk thresholds from historical data."""
+    from traceiq.risk import calibrate_thresholds
+
+    # Collect risk scores
+    risk_scores: list[float] = []
+
+    if logs:
+        # Load from JSONL file
+        import json
+
+        with open(logs) as f:
+            for line in f:
+                if line.strip():
+                    data = json.loads(line)
+                    score = data.get("risk_score")
+                    if score is not None:
+                        risk_scores.append(score)
+    else:
+        # Load from database
+        config = TrackerConfig(
+            storage_backend="sqlite",
+            storage_path=db,
+        )
+
+        with InfluenceTracker(config=config, use_mock_embedder=True) as tracker:
+            scores = tracker.get_scores()
+            for score in scores:
+                if score.risk_score is not None:
+                    risk_scores.append(score.risk_score)
+
+    if len(risk_scores) < 10:
+        console.print("[yellow]Insufficient data for calibration (need at least 10 samples)[/yellow]")
+        return
+
+    # Calibrate thresholds
+    thresholds = calibrate_thresholds(risk_scores)
+
+    if as_json:
+        output = {
+            "sample_count": len(risk_scores),
+            "thresholds": {
+                "medium": thresholds.medium,
+                "high": thresholds.high,
+                "critical": thresholds.critical,
+            },
+            "target_alert_rate": target_alert_rate,
+        }
+        console.print(json.dumps(output, indent=2))
+        return
+
+    console.print("\n[bold]Risk Threshold Calibration[/bold]\n")
+    console.print(f"Sample count: {len(risk_scores)}")
+    console.print(f"Target alert rate: {target_alert_rate:.1%}\n")
+
+    table = Table()
+    table.add_column("Level", style="cyan")
+    table.add_column("Threshold", style="green")
+    table.add_column("Percentile", style="dim")
+
+    table.add_row("Medium", f"{thresholds.medium:.4f}", "p80")
+    table.add_row("High", f"{thresholds.high:.4f}", "p95")
+    table.add_row("Critical", f"{thresholds.critical:.4f}", "p99")
+
+    console.print(table)
+    console.print("\n[dim]Use these thresholds in TrackerConfig.risk_thresholds[/dim]")
+
+
+@cli.command("trust")
+@click.option(
+    "--db",
+    type=click.Path(exists=True),
+    default="traceiq.db",
+    help="Path to SQLite database file",
+)
+@click.option(
+    "--threshold",
+    type=float,
+    default=0.5,
+    help="Trust threshold for flagging low-trust agents",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Output as JSON",
+)
+def trust_cmd(db: str, threshold: float, as_json: bool) -> None:
+    """Show agent trust scores (requires policy to be enabled)."""
+    config = TrackerConfig(
+        storage_backend="sqlite",
+        storage_path=db,
+        enable_policy=True,
+    )
+
+    with InfluenceTracker(config=config, use_mock_embedder=True) as tracker:
+        if tracker.policy is None:
+            console.print("[yellow]Policy engine not enabled[/yellow]")
+            return
+
+        low_trust = tracker.get_low_trust_agents(threshold)
+
+        if as_json:
+            output = [
+                {"agent_id": agent_id, "trust_score": score}
+                for agent_id, score in low_trust
+            ]
+            console.print(json.dumps(output, indent=2))
+            return
+
+        console.print(f"\n[bold]Low Trust Agents (< {threshold})[/bold]\n")
+
+        if not low_trust:
+            console.print("[green]No low-trust agents found[/green]")
+            return
+
+        table = Table()
+        table.add_column("Agent", style="cyan")
+        table.add_column("Trust Score", style="yellow")
+
+        for agent_id, score in low_trust:
+            table.add_row(agent_id, f"{score:.4f}")
+
+        console.print(table)
+
+
 if __name__ == "__main__":
     cli()

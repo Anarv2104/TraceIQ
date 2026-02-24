@@ -4,6 +4,9 @@ import numpy as np
 import pytest
 
 from traceiq.metrics import (
+    BASELINE_FLOOR,
+    IQX_CAP,
+    MIN_BASELINE_SAMPLES,
     build_adjacency_matrix,
     compute_accumulated_influence,
     compute_attack_surface,
@@ -12,10 +15,28 @@ from traceiq.metrics import (
     compute_propagation_risk,
     compute_RWI,
     compute_z_score,
+    compute_z_score_robust,
+    rolling_mad,
     rolling_mean,
     rolling_median,
     rolling_std,
 )
+
+
+class TestMetricConstants:
+    """Tests for metric constants."""
+
+    def test_constants_exist(self):
+        """Verify all constants are defined."""
+        assert MIN_BASELINE_SAMPLES >= 2
+        assert IQX_CAP > 0
+        assert BASELINE_FLOOR > 0
+
+    def test_reasonable_defaults(self):
+        """Verify constants have reasonable values."""
+        assert MIN_BASELINE_SAMPLES == 3
+        assert IQX_CAP == 25.0
+        assert BASELINE_FLOOR == 0.05
 
 
 class TestComputeDriftL2:
@@ -52,18 +73,38 @@ class TestComputeIQx:
         iqx = compute_IQx(drift, baseline_median)
         assert iqx == pytest.approx(2.0, rel=1e-5)
 
-    def test_zero_baseline_uses_epsilon(self):
-        """Zero baseline should use epsilon to avoid division by zero."""
+    def test_zero_baseline_uses_floor(self):
+        """Zero baseline should use baseline_floor to avoid extreme IQx."""
         drift = 1.0
+        # With baseline_floor=0.05 (default), IQx = 1.0 / (0.05 + 1e-6) ≈ 20
         iqx = compute_IQx(drift, 0.0, epsilon=1e-6)
-        assert iqx == pytest.approx(1e6, rel=1e-2)
+        assert iqx == pytest.approx(1.0 / (BASELINE_FLOOR + 1e-6), rel=1e-2)
+        # Should not explode to 1e6 anymore
+        assert iqx < 100
+
+    def test_iqx_capping(self):
+        """IQx should be capped at IQX_CAP."""
+        drift = 100.0  # Very high drift
+        baseline_median = 0.01
+        iqx = compute_IQx(drift, baseline_median)
+        assert iqx == IQX_CAP  # Should be capped
 
     def test_scale_invariance(self):
-        """IQx should be proportional to drift."""
+        """IQx should be proportional to drift (when not capped)."""
         baseline = 0.5
         iqx1 = compute_IQx(1.0, baseline)
         iqx2 = compute_IQx(2.0, baseline)
         assert iqx2 == pytest.approx(2 * iqx1, rel=1e-5)
+
+    def test_custom_cap(self):
+        """Test custom cap value."""
+        iqx = compute_IQx(10.0, 0.1, cap=5.0)
+        assert iqx == 5.0
+
+    def test_custom_floor(self):
+        """Test custom baseline floor."""
+        iqx = compute_IQx(1.0, 0.0, baseline_floor=0.1)
+        assert iqx == pytest.approx(1.0 / (0.1 + 1e-6), rel=1e-2)
 
 
 class TestComputeAccumulatedInfluence:
@@ -232,6 +273,61 @@ class TestRollingFunctions:
         """Test basic std computation."""
         std = rolling_std([2.0, 4.0, 6.0])
         assert std == pytest.approx(2.0)
+
+    def test_rolling_mad_empty(self):
+        """Empty list should return 0."""
+        assert rolling_mad([]) == 0.0
+
+    def test_rolling_mad_single(self):
+        """Single value should return 0."""
+        assert rolling_mad([5.0]) == 0.0
+
+    def test_rolling_mad_basic(self):
+        """Test basic MAD computation."""
+        # values = [1, 2, 3, 4, 5], median = 3
+        # abs deviations = [2, 1, 0, 1, 2], median = 1
+        mad = rolling_mad([1.0, 2.0, 3.0, 4.0, 5.0])
+        assert mad == pytest.approx(1.0)
+
+    def test_rolling_mad_with_outlier(self):
+        """MAD should be robust to outliers."""
+        # Without outlier: [1, 2, 3, 4, 5], median=3, MAD=1
+        # With outlier: [1, 2, 3, 4, 100], median=3, MAD=1
+        mad_normal = rolling_mad([1.0, 2.0, 3.0, 4.0, 5.0])
+        mad_outlier = rolling_mad([1.0, 2.0, 3.0, 4.0, 100.0])
+        assert mad_normal == pytest.approx(1.0)
+        assert mad_outlier == pytest.approx(1.0)  # MAD is robust to outlier
+
+
+class TestComputeZScoreRobust:
+    """Tests for compute_z_score_robust."""
+
+    def test_at_median(self):
+        """Value at median should have Z-score near 0."""
+        values = [1.0, 2.0, 3.0, 4.0, 5.0]  # median = 3
+        z = compute_z_score_robust(3.0, values)
+        assert z == pytest.approx(0.0)
+
+    def test_one_mad_above(self):
+        """One MAD above median should have Z-score near 0.6745."""
+        # values = [1, 2, 3, 4, 5], median = 3, MAD = 1
+        # z = 0.6745 * (4 - 3) / (1 + eps) ≈ 0.6745
+        values = [1.0, 2.0, 3.0, 4.0, 5.0]
+        z = compute_z_score_robust(4.0, values)
+        assert z == pytest.approx(0.6745, rel=1e-3)
+
+    def test_insufficient_history(self):
+        """Should return 0 with fewer than 2 values."""
+        assert compute_z_score_robust(5.0, []) == 0.0
+        assert compute_z_score_robust(5.0, [1.0]) == 0.0
+
+    def test_robust_to_outliers(self):
+        """Robust Z-score should not blow up with outliers."""
+        # Normal values with one extreme outlier
+        values = [1.0, 2.0, 3.0, 4.0, 1000.0]  # median=3, MAD=1
+        z = compute_z_score_robust(5.0, values)
+        # Should be reasonable, not billions
+        assert abs(z) < 10
 
 
 class TestBuildAdjacencyMatrix:

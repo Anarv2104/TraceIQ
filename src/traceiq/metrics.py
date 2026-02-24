@@ -42,14 +42,23 @@ def compute_drift_l2(
     return float(np.linalg.norm(diff))
 
 
+# Constants for numerical stability
+MIN_BASELINE_SAMPLES = 3  # Minimum samples before computing IQx
+IQX_CAP = 25.0  # Maximum IQx value (prevents explosions)
+BASELINE_FLOOR = 0.05  # Minimum baseline denominator
+MAD_CONSTANT = 0.6745  # Makes MAD consistent with std for normal distribution
+
+
 def compute_IQx(
     drift: float,
     baseline_median: float,
     epsilon: float = 1e-6,
+    baseline_floor: float = BASELINE_FLOOR,
+    cap: float = IQX_CAP,
 ) -> float:
     """Compute Influence Quotient (IQx).
 
-    Formula: IQx = I / (B_j + epsilon)
+    Formula: IQx = I / (max(B_j, baseline_floor) + epsilon)
 
     The IQx normalizes influence by the receiver's baseline responsiveness,
     making influence scores comparable across different agents.
@@ -58,11 +67,15 @@ def compute_IQx(
         drift: The drift value (influence proxy)
         baseline_median: Median drift for this receiver
         epsilon: Small constant for numerical stability
+        baseline_floor: Minimum baseline value to prevent extreme IQx
+        cap: Maximum IQx value for numerical stability
 
     Returns:
-        Normalized influence quotient
+        Normalized influence quotient (capped)
     """
-    return drift / (baseline_median + epsilon)
+    effective_baseline = max(baseline_median, baseline_floor)
+    iqx = drift / (effective_baseline + epsilon)
+    return min(iqx, cap)
 
 
 def compute_accumulated_influence(iqx_values: list[float]) -> float:
@@ -210,6 +223,57 @@ def rolling_std(values: list[float]) -> float:
     if len(values) < 2:
         return 0.0
     return float(np.std(values, ddof=1))
+
+
+def rolling_mad(values: list[float]) -> float:
+    """Compute Median Absolute Deviation (MAD).
+
+    MAD is a robust measure of variability that is less affected by outliers
+    than standard deviation.
+
+    Args:
+        values: List of numeric values
+
+    Returns:
+        MAD value, or 0.0 if fewer than 2 values
+    """
+    if len(values) < 2:
+        return 0.0
+    median = np.median(values)
+    return float(np.median(np.abs(np.array(values) - median)))
+
+
+def compute_z_score_robust(
+    iqx: float,
+    values: list[float],
+    epsilon: float = 1e-6,
+) -> float:
+    """Compute robust Z-score using MAD (Median Absolute Deviation).
+
+    Formula: Z_robust = MAD_CONSTANT * (IQx - median) / (MAD + epsilon)
+
+    The constant 0.6745 makes MAD consistent with std for normal distribution.
+    This is more robust to outliers than mean/std based Z-score.
+
+    Note: This is the canonical Z-score computation used throughout TraceIQ.
+    The ScoreResult.Z_score field and tracker result "robust_z" key both
+    contain values computed by this function. The dual naming exists for
+    backward compatibility (Z_score) while signaling the recommended
+    field name (robust_z).
+
+    Args:
+        iqx: Current IQx value
+        values: Historical IQx values
+        epsilon: Small constant for numerical stability
+
+    Returns:
+        Robust Z-score (number of MAD-scaled deviations from median)
+    """
+    if len(values) < 2:
+        return 0.0
+    median = float(np.median(values))
+    mad = rolling_mad(values)
+    return MAD_CONSTANT * (iqx - median) / (mad + epsilon)
 
 
 def build_adjacency_matrix(

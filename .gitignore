@@ -87,6 +87,10 @@ examples/output/*.png
 examples/output/*.csv
 examples/output/*.jsonl
 
+# Experiments output
+experiments/results/*.csv
+experiments/plots/*.png
+
 # macOS
 .DS_Store
 

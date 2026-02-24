@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import networkx as nx
 import numpy as np
 
-from traceiq.metrics import build_adjacency_matrix, compute_propagation_risk
+from traceiq.metrics import IQX_CAP, build_adjacency_matrix, compute_propagation_risk
+from traceiq.weights import bounded_iqx_weight, confidence_weight
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from traceiq.models import InteractionEvent, PropagationRiskResult, ScoreResult
+    from traceiq.schema import TraceIQEvent
 
 
 class InfluenceGraph:
@@ -31,7 +33,15 @@ class InfluenceGraph:
         event: InteractionEvent,
         score: ScoreResult,
     ) -> None:
-        """Add an interaction to the graph."""
+        """Add an interaction to the graph.
+
+        Note: Events with event_type="blocked" are skipped to exclude
+        blocked events from graph computations (v0.4.0).
+        """
+        # Skip blocked events (v0.4.0)
+        if hasattr(score, "event_type") and score.event_type == "blocked":
+            return
+
         sender = event.sender_id
         receiver = event.receiver_id
 
@@ -45,9 +55,17 @@ class InfluenceGraph:
         self._edge_scores[(sender, receiver)].append(score.influence_score)
         self._edge_drifts[(sender, receiver)].append(score.drift_delta)
 
-        # Track IQx if available (v0.3.0)
+        # Track IQx if available (v0.3.0) - cap extreme values for stability
         if score.IQx is not None:
-            self._edge_iqx[(sender, receiver)].append(score.IQx)
+            capped_iqx = min(score.IQx, IQX_CAP)
+            self._edge_iqx[(sender, receiver)].append(capped_iqx)
+        elif score.drift_l2_state is not None:
+            # Fallback: use raw drift as weight when IQx is None (cold start)
+            # This ensures PR can be computed even during warmup
+            self._edge_iqx[(sender, receiver)].append(score.drift_l2_state)
+        elif score.drift_l2_proxy is not None:
+            # Secondary fallback: use proxy drift
+            self._edge_iqx[(sender, receiver)].append(score.drift_l2_proxy)
 
         # Update edge with aggregated weight (influence-based)
         avg_score = sum(self._edge_scores[(sender, receiver)]) / len(
@@ -333,16 +351,41 @@ class InfluenceGraph:
         return results
 
     def get_mean_iqx_weights(self) -> dict[tuple[str, str], float]:
-        """Get mean IQx for each edge.
+        """Get mean IQx for each edge, with capping for numerical stability.
 
         Returns:
-            Dict mapping (sender, receiver) to mean IQx
+            Dict mapping (sender, receiver) to mean IQx (capped to IQX_CAP)
         """
-        return {
-            edge: sum(iqx_values) / len(iqx_values)
-            for edge, iqx_values in self._edge_iqx.items()
-            if iqx_values
-        }
+        result = {}
+        for edge, iqx_values in self._edge_iqx.items():
+            if iqx_values:
+                # Cap each value to prevent extreme weights from early interactions
+                capped_values = [min(v, IQX_CAP) for v in iqx_values]
+                result[edge] = sum(capped_values) / len(capped_values)
+        return result
+
+    def get_edge_weight(self, sender: str, receiver: str) -> float:
+        """Get sanitized edge weight for PR computation.
+
+        Weight = clamp(mean_IQx, 0, IQX_CAP) if available
+                 else clamp(mean_influence_score, 0, inf)
+
+        Args:
+            sender: Sender agent ID
+            receiver: Receiver agent ID
+
+        Returns:
+            Sanitized edge weight
+        """
+        edge = (sender, receiver)
+
+        if edge in self._edge_iqx and self._edge_iqx[edge]:
+            raw = sum(self._edge_iqx[edge]) / len(self._edge_iqx[edge])
+            return max(0, min(raw, IQX_CAP))
+        elif edge in self._edge_scores and self._edge_scores[edge]:
+            raw = sum(self._edge_scores[edge]) / len(self._edge_scores[edge])
+            return max(0, raw)  # influence_score can be negative, clamp to 0
+        return 0.0
 
     def top_iqx_influencers(self, n: int = 10) -> list[tuple[str, float]]:
         """Get top N agents ranked by sum of outgoing IQx.
@@ -362,3 +405,115 @@ class InfluenceGraph:
         self._edge_scores.clear()
         self._edge_drifts.clear()
         self._edge_iqx.clear()
+
+    # v0.4.0 methods
+
+    def build_windowed_adjacency(
+        self,
+        events: list[InteractionEvent],
+        scores: list[ScoreResult],
+        window_size: int = 50,
+        use_bounded_weights: bool = True,
+    ) -> tuple[NDArray[np.float64], list[str]]:
+        """Build adjacency matrix from a window of events with bounded weights.
+
+        This method filters to event_type=="applied" only and uses bounded
+        weight transformations for numerical stability.
+
+        Args:
+            events: List of events (will be filtered to last window_size)
+            scores: Corresponding scores
+            window_size: Maximum number of events to include
+            use_bounded_weights: Apply sigmoid transformation to weights
+
+        Returns:
+            Tuple of (NxN numpy array, list of agent IDs in matrix order)
+        """
+        # Filter to applied events only
+        score_map = {s.event_id: s for s in scores}
+        applied_events = []
+        for event in events:
+            score = score_map.get(event.event_id)
+            if score is not None:
+                event_type = getattr(score, "event_type", "applied")
+                if event_type == "applied":
+                    applied_events.append((event, score))
+
+        # Take last window_size events
+        windowed = applied_events[-window_size:]
+
+        if not windowed:
+            return np.array([], dtype=np.float64), []
+
+        # Collect agents and edge weights
+        agents: set[str] = set()
+        edge_weights: dict[tuple[str, str], list[float]] = defaultdict(list)
+
+        for event, score in windowed:
+            agents.add(event.sender_id)
+            agents.add(event.receiver_id)
+
+            # Compute weight based on IQx
+            if score.IQx is not None:
+                if use_bounded_weights:
+                    # Use bounded sigmoid transformation
+                    conf = confidence_weight(
+                        getattr(score, "confidence", "medium")
+                    )
+                    alignment = max(0, score.influence_score)  # Non-negative
+                    weight = bounded_iqx_weight(score.IQx) * alignment * conf
+                else:
+                    weight = min(score.IQx, IQX_CAP)
+            elif score.drift_l2_state is not None:
+                weight = score.drift_l2_state
+            elif score.drift_l2_proxy is not None:
+                weight = score.drift_l2_proxy
+            else:
+                weight = 0.0
+
+            edge_weights[(event.sender_id, event.receiver_id)].append(weight)
+
+        # Build adjacency matrix
+        agent_list = sorted(agents)
+        mean_weights = {
+            edge: sum(weights) / len(weights)
+            for edge, weights in edge_weights.items()
+            if weights
+        }
+
+        matrix = build_adjacency_matrix(mean_weights, agent_list)
+        return matrix, agent_list
+
+    def get_bounded_weights(self) -> dict[tuple[str, str], float]:
+        """Get edge weights with bounded sigmoid transformation.
+
+        Returns:
+            Dict mapping (sender, receiver) to bounded weight in [0, 1]
+        """
+        result = {}
+        for edge, iqx_values in self._edge_iqx.items():
+            if iqx_values:
+                mean_iqx = sum(iqx_values) / len(iqx_values)
+                result[edge] = bounded_iqx_weight(mean_iqx)
+        return result
+
+    def compute_windowed_pr(
+        self,
+        events: list[InteractionEvent],
+        scores: list[ScoreResult],
+        window_size: int = 50,
+    ) -> float:
+        """Compute propagation risk for a window of events.
+
+        Args:
+            events: List of events
+            scores: Corresponding scores
+            window_size: Number of events to include
+
+        Returns:
+            Spectral radius of windowed adjacency matrix
+        """
+        matrix, _ = self.build_windowed_adjacency(
+            events, scores, window_size, use_bounded_weights=True
+        )
+        return compute_propagation_risk(matrix)
