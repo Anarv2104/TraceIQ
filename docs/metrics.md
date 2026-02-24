@@ -192,9 +192,9 @@ for agent, score in summary.top_susceptible:
     print(f"  {agent}: {score:.3f}")
 ```
 
-## IEEE Metrics (v0.3.0)
+## Research Metrics
 
-TraceIQ v0.3.0 introduces mathematically rigorous metrics for research applications.
+TraceIQ provides project-defined research metrics for influence quantification. These are documented in this repository and are not externally standardized.
 
 ### Drift Types
 
@@ -253,7 +253,7 @@ IQx = drift / (baseline_median + epsilon)
 
 ### Propagation Risk
 
-Network-level instability measured as spectral radius:
+Network-level metric based on spectral radius of the influence adjacency matrix:
 
 ```
 PR = max(|eigenvalues(W)|)
@@ -261,9 +261,10 @@ PR = max(|eigenvalues(W)|)
 
 | PR Value | Interpretation |
 |----------|----------------|
-| < 1.0 | Influence dampens through network |
-| = 1.0 | Influence preserved |
-| > 1.0 | Influence amplifies (unstable) |
+| Lower | Influence tends to dampen |
+| Higher | Influence tends to propagate |
+
+**Important**: PR is a relative indicator. The threshold of 1.0 is theoretically motivated but requires calibration for your specific system. Factors affecting interpretation include network topology, agent diversity, and weight normalization. Establish baseline PR values before using thresholds for alerting.
 
 ### Risk-Weighted Influence (RWI)
 

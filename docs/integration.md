@@ -341,6 +341,12 @@ if result["valid"] and result["IQx"] > 2.0:
     alert()
 ```
 
+## MCP Server
+
+An experimental MCP (Model Context Protocol) server is included in `experiments/mcp_server_traceiq.py`. This provides a JSON-over-stdio interface for external tools to log interactions and query metrics.
+
+See [experiments/README.md](../experiments/README.md) for usage details.
+
 ## Common Mistakes to Avoid
 
 1. **Alerting on cold start**: Always check `result["valid"]` before taking action

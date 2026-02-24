@@ -314,4 +314,4 @@ Recommended values:
 
 ---
 
-*This document accompanies the TraceIQ v0.3.0 release and the associated IEEE research paper.*
+*This document accompanies the TraceIQ library and provides the mathematical foundations for its metrics.*
