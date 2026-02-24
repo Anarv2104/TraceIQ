@@ -87,9 +87,18 @@ examples/output/*.png
 examples/output/*.csv
 examples/output/*.jsonl
 
-# Experiments output
-experiments/results/*.csv
-experiments/plots/*.png
+# Experiments output (generated files, regenerate with plot_all.py)
+# Example artifacts are tracked for README images - see !negations below
+experiments/results/*
+experiments/plots/*
+
+# Track example files for README demonstration
+!experiments/results/exp1_results.csv
+!experiments/results/exp2_results.csv
+!experiments/results/exp3_results.csv
+!experiments/plots/exp1_accuracy.png
+!experiments/plots/exp2_propagation_risk.png
+!experiments/plots/exp3_mitigation_compare.png
 
 # macOS
 .DS_Store
