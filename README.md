@@ -297,7 +297,7 @@ If you use TraceIQ in your research, please cite:
 ```bibtex
 @software{traceiq,
   title = {TraceIQ: Measure AI-to-AI Influence in Multi-Agent Systems},
-  year = {2024},
+  year = {2026},
   url = {https://github.com/Anarv2104/TraceIQ}
 }
 ```
