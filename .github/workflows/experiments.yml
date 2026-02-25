@@ -1,0 +1,51 @@
+name: Heavy Experiments
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiments:
+        description: "all, simulation, ablation, sensitivity"
+        default: "all"
+
+permissions:
+  contents: read
+
+jobs:
+  experiments:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[all,dev]"
+
+      - name: Create output directories
+        run: mkdir -p research/outputs experiments/results
+
+      - name: Run experiments
+        run: |
+          if [ "${{ inputs.experiments }}" = "all" ] || [ "${{ inputs.experiments }}" = "simulation" ]; then
+            echo "Running synthetic simulation..."
+            cd research && python synthetic_simulation.py && cd ..
+          fi
+          if [ "${{ inputs.experiments }}" = "all" ] || [ "${{ inputs.experiments }}" = "ablation" ]; then
+            echo "Running ablation study..."
+            cd research && python ablation_study.py && cd ..
+          fi
+          if [ "${{ inputs.experiments }}" = "all" ] || [ "${{ inputs.experiments }}" = "sensitivity" ]; then
+            echo "Running sensitivity analysis..."
+            cd research && python sensitivity_analysis.py && cd ..
+          fi
+
+      - name: Upload experiment results
+        uses: actions/upload-artifact@v4
+        with:
+          name: experiment-results
+          path: |
+            research/outputs/
+            experiments/results/
