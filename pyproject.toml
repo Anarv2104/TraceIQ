@@ -74,6 +74,9 @@ packages = ["src/traceiq"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "perf: performance tests (deselect with '-m \"not perf\"')",
+]
 
 [tool.ruff]
 line-length = 88

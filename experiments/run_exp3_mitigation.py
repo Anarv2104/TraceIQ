@@ -149,6 +149,13 @@ def run_experiment(
                         "Z_score": None,
                         "alert": False,
                         "influence_score": 0.0,
+                        "valid": True,
+                        "confidence": "high",
+                        "robust_z": None,
+                        "risk_score": None,
+                        "risk_level": "unknown",
+                        "policy_action": "quarantine",
+                        "event_type": "blocked",  # Quarantined events are blocked
                     }
                 else:
                     # Normal processing
@@ -188,7 +195,7 @@ def run_experiment(
                         "risk_score": track_result.get("risk_score"),
                         "risk_level": track_result.get("risk_level", "unknown"),
                         "policy_action": track_result.get("policy_action"),
-                        "event_type": track_result.get("event_type", "applied"),
+                        "event_type": "blocked" if quarantined else track_result.get("event_type", "applied"),
                     }
                 )
 
@@ -306,6 +313,47 @@ def print_summary(results: list[dict]) -> None:
     print(f"  Without mitigation: {no_mit_acc:.1f}% accuracy, {no_mit_alerts} alerts")
     print(f"  With mitigation: {with_mit_acc:.1f}% accuracy, {with_mit_alerts} alerts")
     print(f"  Accuracy improvement: {with_mit_acc - no_mit_acc:+.1f}%")
+
+    # Event type accounting
+    print("\n" + "=" * 60)
+    print("EVENT TYPE ACCOUNTING:")
+    print("=" * 60)
+
+    for mitigation_enabled in [False, True]:
+        mode_name = "WITH mitigation" if mitigation_enabled else "WITHOUT mitigation"
+        mode_results = [
+            r for r in results if r["mitigation_enabled"] == int(mitigation_enabled)
+        ]
+
+        # Count by event_type
+        applied_events = [r for r in mode_results if r.get("event_type") != "blocked"]
+        blocked_events = [r for r in mode_results if r.get("event_type") == "blocked"]
+
+        applied_count = len(applied_events)
+        blocked_count = len(blocked_events)
+        attempted_count = applied_count + blocked_count
+
+        # Compute rates on APPLIED events only
+        if applied_count > 0:
+            applied_alert_rate = (
+                sum(1 for r in applied_events if r["alert"]) / applied_count * 100
+            )
+            applied_error_rate = (
+                sum(1 for r in applied_events if not r["correct"]) / applied_count * 100
+            )
+            applied_mean_risk = (
+                sum(r.get("risk_score") or 0 for r in applied_events) / applied_count
+            )
+        else:
+            applied_alert_rate = applied_error_rate = applied_mean_risk = 0
+
+        print(f"\n{mode_name}:")
+        print(f"  Attempted: {attempted_count}")
+        print(f"  Applied: {applied_count}")
+        print(f"  Blocked: {blocked_count}")
+        print(f"  Applied Alert Rate: {applied_alert_rate:.1f}%")
+        print(f"  Applied Error Rate: {applied_error_rate:.1f}%")
+        print(f"  Applied Mean Risk: {applied_mean_risk:.4f}")
 
 
 def main() -> None:

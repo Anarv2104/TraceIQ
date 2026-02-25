@@ -266,6 +266,8 @@ def plot_exp1_accuracy_with_stats(df: pd.DataFrame, output_path: Path) -> None:
 def plot_exp1_iqx_boxplot(df: pd.DataFrame, output_path: Path) -> None:
     """Plot IQx distribution by condition for Experiment 1.
 
+    Note: Only shows conditions B and C since Condition A has no tracking.
+
     Args:
         df: Experiment 1 results DataFrame
         output_path: Path to save plot
@@ -275,15 +277,22 @@ def plot_exp1_iqx_boxplot(df: pd.DataFrame, output_path: Path) -> None:
 
     fig, ax = plt.subplots(figsize=(8, 6))
 
-    conditions = ["A", "B", "C"]
-    labels = ["No Hint", "Correct Hint", "Wrong Hint"]
-    colors = ["#2ecc71", "#3498db", "#e74c3c"]
+    # Only B and C since A has no tracking in v0.4.0
+    conditions = ["B", "C"]
+    labels = ["Correct Hint", "Wrong Hint"]
+    colors = ["#3498db", "#e74c3c"]
 
     data = [df_clean[df_clean["condition"] == c]["IQx"].values for c in conditions]
 
+    # Check if we have data
+    if all(len(d) == 0 for d in data):
+        print(f"Skipping IQx boxplot: no data")
+        plt.close()
+        return
+
     bp = ax.boxplot(
         data,
-        labels=labels,
+        tick_labels=labels,
         patch_artist=True,
         showfliers=True,
         flierprops={"marker": "o", "markersize": 4, "alpha": 0.5},
@@ -295,7 +304,7 @@ def plot_exp1_iqx_boxplot(df: pd.DataFrame, output_path: Path) -> None:
 
     ax.set_ylabel("IQx (Influence Quotient)", fontsize=12)
     ax.set_xlabel("Condition", fontsize=12)
-    ax.set_title("Experiment 1: IQx Distribution by Condition", fontsize=14, fontweight="bold")
+    ax.set_title("Experiment 1: IQx Distribution by Condition\n(Conditions with influence tracking)", fontsize=14, fontweight="bold")
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
@@ -307,6 +316,8 @@ def plot_exp1_iqx_boxplot(df: pd.DataFrame, output_path: Path) -> None:
 def plot_exp1_iqx_with_stats(df: pd.DataFrame, output_path: Path) -> None:
     """Plot IQx distribution with statistical annotations.
 
+    Note: Only shows conditions B and C since Condition A has no tracking.
+
     Args:
         df: Experiment 1 results DataFrame
         output_path: Path to save plot
@@ -315,11 +326,18 @@ def plot_exp1_iqx_with_stats(df: pd.DataFrame, output_path: Path) -> None:
 
     fig, ax = plt.subplots(figsize=(9, 7))
 
-    conditions = ["A", "B", "C"]
-    labels = ["No Hint\n(Baseline)", "Correct Hint", "Wrong Hint"]
-    colors = ["#2ecc71", "#3498db", "#e74c3c"]
+    # Only B and C since A has no tracking in v0.4.0
+    conditions = ["B", "C"]
+    labels = ["Correct Hint", "Wrong Hint"]
+    colors = ["#3498db", "#e74c3c"]
 
     data = [df_clean[df_clean["condition"] == c]["IQx"].values for c in conditions]
+
+    # Check if we have data
+    if all(len(d) == 0 for d in data):
+        print(f"Skipping IQx stats plot: no data")
+        plt.close()
+        return
 
     # Violin plot for distribution visualization
     parts = ax.violinplot(data, positions=range(len(conditions)), showmeans=True, showextrema=False)
@@ -352,14 +370,14 @@ def plot_exp1_iqx_with_stats(df: pd.DataFrame, output_path: Path) -> None:
                 ha="center", va="top", fontsize=9,
                 bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
 
-    # Statistical tests
-    if HAS_SCIPY and len(data[0]) > 1 and len(data[2]) > 1:
+    # Statistical tests (B vs C)
+    if HAS_SCIPY and len(data[0]) > 1 and len(data[1]) > 1:
         # Mann-Whitney U test (non-parametric, better for IQx)
-        _, p_ac = compute_mann_whitney(data[0], data[2])
-        d_ac = compute_cohens_d(data[0], data[2])
+        _, p_bc = compute_mann_whitney(data[0], data[1])
+        d_bc = compute_cohens_d(data[0], data[1])
 
         # Add stats box
-        stats_text = f"A vs C:\n{format_p_value(p_ac)} {significance_stars(p_ac)}\nd = {d_ac:.2f}"
+        stats_text = f"B vs C:\n{format_p_value(p_bc)} {significance_stars(p_bc)}\nd = {d_bc:.2f}"
         ax.text(0.98, 0.02, stats_text, transform=ax.transAxes,
                 ha="right", va="bottom", fontsize=9,
                 bbox=dict(boxstyle="round", facecolor="white", alpha=0.9))
@@ -375,9 +393,8 @@ def plot_exp1_iqx_with_stats(df: pd.DataFrame, output_path: Path) -> None:
     # Add legend for plot elements
     from matplotlib.patches import Patch
     legend_elements = [
-        Patch(facecolor=colors[0], alpha=0.6, label="No Hint"),
-        Patch(facecolor=colors[1], alpha=0.6, label="Correct Hint"),
-        Patch(facecolor=colors[2], alpha=0.6, label="Wrong Hint"),
+        Patch(facecolor=colors[0], alpha=0.6, label="Correct Hint"),
+        Patch(facecolor=colors[1], alpha=0.6, label="Wrong Hint"),
     ]
     ax.legend(handles=legend_elements, loc="upper left", fontsize=9)
 
@@ -814,6 +831,155 @@ def plot_exp3_mitigation_compare(df: pd.DataFrame, output_path: Path) -> None:
     print(f"Saved: {output_path}")
 
 
+def plot_exp1_risk_calibration(df: pd.DataFrame, output_path: Path) -> None:
+    """Plot risk score calibration curve for Experiment 1.
+
+    Bins risk_score values and plots observed error rate per bin.
+    A well-calibrated system has points near the diagonal.
+
+    Args:
+        df: Experiment 1 results DataFrame
+        output_path: Path to save plot
+    """
+    # Filter to rows with valid risk_score (Conditions B and C only)
+    df_valid = df[df["risk_score"].notna() & (df["condition"] != "A")].copy()
+
+    if len(df_valid) < 10:
+        print(f"Skipping risk calibration plot: insufficient data ({len(df_valid)} rows)")
+        return
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    # Bin risk_score into 6 bins
+    num_bins = 6
+    df_valid["risk_bin"] = pd.cut(df_valid["risk_score"], bins=num_bins, labels=False)
+
+    # Compute observed error rate per bin
+    bin_stats = []
+    for bin_idx in range(num_bins):
+        bin_data = df_valid[df_valid["risk_bin"] == bin_idx]
+        if len(bin_data) > 0:
+            mean_risk = bin_data["risk_score"].mean()
+            error_rate = 1 - bin_data["correct"].mean()  # Proportion incorrect
+            n = len(bin_data)
+            bin_stats.append((mean_risk, error_rate, n))
+
+    if not bin_stats:
+        print("Skipping risk calibration plot: no valid bins")
+        plt.close()
+        return
+
+    # Unpack statistics
+    mean_risks, error_rates, counts = zip(*bin_stats)
+
+    # Plot calibration curve
+    ax.scatter(mean_risks, error_rates, s=[c * 10 for c in counts], alpha=0.7, color="#3498db")
+    ax.plot(mean_risks, error_rates, "b-", alpha=0.5, linewidth=2, label="Observed")
+
+    # Plot perfect calibration line
+    ax.plot([0, 1], [0, 1], "k--", linewidth=2, label="Perfect Calibration")
+
+    # Add bin count labels
+    for mr, er, n in bin_stats:
+        ax.annotate(f"n={n}", (mr, er), textcoords="offset points", xytext=(5, 5), fontsize=8)
+
+    ax.set_xlabel("Mean Predicted Risk Score", fontsize=12)
+    ax.set_ylabel("Observed Error Rate", fontsize=12)
+    ax.set_title("Experiment 1: Risk Score Calibration\n(Conditions B & C)", fontsize=14, fontweight="bold")
+    ax.set_xlim(0, 1.05)
+    ax.set_ylim(0, 1.05)
+    ax.legend(loc="lower right")
+    ax.grid(alpha=0.3)
+
+    # Add annotation
+    ax.text(0.02, 0.98, f"Total n = {len(df_valid)}", transform=ax.transAxes,
+            ha="left", va="top", fontsize=9, style="italic")
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {output_path}")
+
+
+def plot_exp1_cold_start_correctness(df: pd.DataFrame, output_path: Path, baseline_k: int = 20) -> None:
+    """Plot cold-start correctness: valid=False and alert=False before baseline_k.
+
+    Shows that during cold start period, metrics are marked invalid and
+    no alerts are raised (preventing false alarms during warmup).
+
+    Args:
+        df: Experiment 1 results DataFrame
+        output_path: Path to save plot
+        baseline_k: Number of events before baseline is established
+    """
+    # Filter to conditions with tracking (B and C)
+    df_tracked = df[df["condition"].isin(["B", "C"])].copy()
+
+    if len(df_tracked) == 0:
+        print("Skipping cold start plot: no tracked conditions")
+        return
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    for cond_idx, condition in enumerate(["B", "C"]):
+        ax = axes[cond_idx]
+        df_cond = df_tracked[df_tracked["condition"] == condition].reset_index(drop=True)
+
+        if len(df_cond) == 0:
+            continue
+
+        # Add event index
+        df_cond["event_idx"] = range(len(df_cond))
+
+        # Plot valid flag
+        valid_values = df_cond["valid"].values
+        event_indices = df_cond["event_idx"].values
+
+        # Create step plot for valid flag
+        ax.step(event_indices, valid_values, where="mid", linewidth=2, color="#2ecc71", label="valid")
+
+        # Plot alert flag (should be 0 during cold start)
+        alert_values = df_cond["alert"].values
+        ax.step(event_indices, alert_values * 0.5 + 1.5, where="mid", linewidth=2, color="#e74c3c", label="alert (offset)")
+
+        # Mark cold start boundary
+        ax.axvline(x=baseline_k, color="#95a5a6", linestyle="--", linewidth=2, label=f"baseline_k={baseline_k}")
+
+        # Shade cold start region
+        ax.axvspan(0, baseline_k, alpha=0.1, color="gray", label="Cold Start Period")
+
+        condition_name = {"B": "Correct Hint", "C": "Wrong Hint"}[condition]
+        ax.set_xlabel("Event Index", fontsize=11)
+        ax.set_ylabel("Flag Value", fontsize=11)
+        ax.set_title(f"Condition {condition} ({condition_name})", fontsize=12, fontweight="bold")
+        ax.set_ylim(-0.1, 2.5)
+        ax.set_yticks([0, 1, 1.5, 2])
+        ax.set_yticklabels(["0 (invalid/no alert)", "1 (valid)", "0 (alert offset)", "1 (alert offset)"])
+        ax.legend(loc="upper right", fontsize=8)
+        ax.grid(alpha=0.3)
+
+        # Verify cold start correctness
+        cold_start_valid = df_cond[df_cond["event_idx"] < baseline_k]["valid"]
+        cold_start_alert = df_cond[df_cond["event_idx"] < baseline_k]["alert"]
+
+        cold_valid_count = (cold_start_valid == 0).sum()
+        cold_alert_count = (cold_start_alert == 0).sum()
+        cold_total = len(cold_start_valid)
+
+        # Add correctness stats
+        ax.text(0.02, 0.02, f"Cold start: {cold_valid_count}/{cold_total} invalid, {cold_alert_count}/{cold_total} no-alert",
+                transform=ax.transAxes, ha="left", va="bottom", fontsize=8,
+                bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
+
+    fig.suptitle("Experiment 1: Cold-Start Behavior\n(valid=False, alert=False during warmup)",
+                 fontsize=14, fontweight="bold", y=1.02)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {output_path}")
+
+
 def main() -> None:
     """Generate all experiment plots."""
     if not HAS_DEPS:
@@ -843,6 +1009,9 @@ def main() -> None:
         plot_exp1_iqx_boxplot(df1, plots_dir / "exp1_iqx_box.png")
         plot_exp1_iqx_with_stats(df1, plots_dir / "exp1_iqx_stats.png")
         plot_exp1_alert_rate(df1, plots_dir / "exp1_alert_rate.png")
+        # New plots (v0.4.0)
+        plot_exp1_risk_calibration(df1, plots_dir / "exp1_risk_calibration.png")
+        plot_exp1_cold_start_correctness(df1, plots_dir / "exp1_cold_start.png")
     else:
         print(f"Skipping Experiment 1 plots: {exp1_path} not found")
         print("Run: python experiments/run_exp1_wrong_hint.py")

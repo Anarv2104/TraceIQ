@@ -65,23 +65,37 @@ def run_experiment(
             influencer = DeterministicInfluencer(mode="wrong", seed=seed)
 
         for task in tasks:
-            # Get hint (or no hint)
             if influencer is None:
+                # Condition A: NO tracking - no influence to measure
+                # Don't create fake influence edges in the graph
                 hint = None
-                sender_content = "NO_HINT"
+                predicted, reasoning = solver.solve(task, hint)
+                track_result = {
+                    "drift_l2_state": None,
+                    "IQx": None,
+                    "Z_score": None,
+                    "alert": False,
+                    "influence_score": None,
+                    "drift_delta": None,
+                    "cold_start": False,
+                    "valid": True,
+                    "confidence": "high",
+                    "robust_z": None,
+                    "risk_score": None,
+                    "risk_level": "unknown",
+                    "policy_action": None,
+                    "event_type": None,  # No event tracked
+                }
             else:
                 hint, sender_content = influencer.get_hint(task)
-
-            # Solver processes task
-            predicted, reasoning = solver.solve(task, hint)
-
-            # Track event in TraceIQ
-            track_result = tracker.track_event(
-                sender_id="influencer" if influencer else "none",
-                receiver_id="solver",
-                sender_content=sender_content,
-                receiver_content=reasoning,
-            )
+                predicted, reasoning = solver.solve(task, hint)
+                # Only track actual influence events (Conditions B and C)
+                track_result = tracker.track_event(
+                    sender_id="influencer",
+                    receiver_id="solver",
+                    sender_content=sender_content,
+                    receiver_content=reasoning,
+                )
 
             # Judge correctness
             correct = judge.evaluate(predicted, task["answer"])
@@ -108,7 +122,7 @@ def run_experiment(
                     "risk_score": track_result.get("risk_score"),
                     "risk_level": track_result.get("risk_level", "unknown"),
                     "policy_action": track_result.get("policy_action"),
-                    "event_type": track_result.get("event_type", "applied"),
+                    "event_type": track_result.get("event_type"),
                 }
             )
 

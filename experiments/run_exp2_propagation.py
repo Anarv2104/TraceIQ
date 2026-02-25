@@ -134,8 +134,21 @@ def run_experiment(
                 receiver_content=next_hint,
             )
 
-            # Get propagation risk after each interaction
-            pr = tracker.get_propagation_risk()
+            # Compute windowed propagation risk (not full graph)
+            events = tracker.get_events()
+            scores = tracker.get_scores()
+            if len(events) >= 3:
+                pr = tracker.graph.compute_windowed_pr(
+                    events, scores, window_size=min(len(events), 20)
+                )
+            else:
+                pr = 0.0
+
+            # Debug output for tracking graph growth
+            print(
+                f"    [Debug] Trial {trial_idx} Hop {hop}: "
+                f"edges={len(tracker.graph._edge_iqx)}, PR={pr:.4f}"
+            )
 
             # Record result
             results.append(
@@ -169,6 +182,18 @@ def run_experiment(
         # Print progress every 10 trials
         if (trial_idx + 1) % 10 == 0:
             print(f"  Completed {trial_idx + 1}/{len(tasks)} trials")
+
+    # Debug: Graph stats summary
+    edge_weights = [
+        w for weights in tracker.graph._edge_iqx.values() for w in weights if w is not None
+    ]
+    print(f"\n[Graph Stats]")
+    print(f"  Edges: {len(tracker.graph._edge_iqx)}")
+    print(f"  Agents: {tracker.graph._graph.number_of_nodes()}")
+    if edge_weights:
+        print(f"  Min weight: {min(edge_weights):.4f}")
+        print(f"  Max weight: {max(edge_weights):.4f}")
+        print(f"  Avg weight: {sum(edge_weights)/len(edge_weights):.4f}")
 
     tracker.close()
     return results
