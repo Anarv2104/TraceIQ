@@ -529,8 +529,8 @@ def plot_exp2_propagation_risk(df: pd.DataFrame, output_path: Path) -> None:
     ax.plot(x_vals, means, color="#9b59b6", linewidth=2, label="Mean PR")
     ax.fill_between(x_vals, ci_lows, ci_highs, color="#9b59b6", alpha=0.2, label="95% CI")
 
-    # Add horizontal line at PR = 1.0 (critical threshold)
-    ax.axhline(y=1.0, color="#e74c3c", linestyle="--", linewidth=2, label="Critical (PR=1.0)")
+    # Add horizontal reference line at PR = 1.0
+    ax.axhline(y=1.0, color="#95a5a6", linestyle="--", linewidth=1.5, label="Reference (1.0)")
 
     # Annotate final PR value with CI
     if len(means) > 0:

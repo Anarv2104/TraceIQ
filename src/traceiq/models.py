@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class InteractionEvent(BaseModel):
@@ -36,7 +36,7 @@ class TrackerConfig(BaseModel):
     embedding_cache_size: int = Field(default=10000, gt=0)
 
     # Scoring settings
-    baseline_window: int = Field(default=10, gt=0)
+    baseline_window: int = Field(default=30, gt=0)  # Must be >= baseline_k (default 20)
     drift_threshold: float = Field(default=0.3, ge=0.0, le=2.0)
     influence_threshold: float = Field(default=0.5, ge=-1.0, le=1.0)
 
@@ -79,6 +79,17 @@ class TrackerConfig(BaseModel):
 
     # Misc
     random_seed: int | None = None
+
+    @model_validator(mode="after")
+    def validate_baseline_consistency(self) -> TrackerConfig:
+        """Ensure baseline_window >= baseline_k for valid metric computation."""
+        if self.baseline_window < self.baseline_k:
+            raise ValueError(
+                f"baseline_window ({self.baseline_window}) must be >= baseline_k "
+                f"({self.baseline_k}). Cannot collect {self.baseline_k} samples "
+                f"in a window of {self.baseline_window}."
+            )
+        return self
 
 
 class ScoreResult(BaseModel):

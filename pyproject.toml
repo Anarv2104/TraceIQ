@@ -53,7 +53,7 @@ all = [
 ]
 dev = [
     "pytest>=7.0",
-    "ruff>=0.1.0",
+    "ruff==0.9.7",  # Pin to specific version for CI consistency
 ]
 docs = [
     "mkdocs>=1.5",
@@ -76,14 +76,8 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "perf: performance tests (deselect with '-m \"not perf\"')",
+    "integration: integration tests (run separately in CI)",
 ]
 
-[tool.ruff]
-line-length = 88
-target-version = "py310"
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "W"]
-
-[tool.ruff.format]
-quote-style = "double"
+# Ruff configuration is in ruff.toml (single source of truth)
+# [tool.ruff] sections removed to avoid confusion with ruff.toml

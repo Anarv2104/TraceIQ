@@ -135,10 +135,13 @@ def create_tracker(
     Returns:
         Configured InfluenceTracker instance
     """
+    # Ensure baseline_window >= baseline_k for valid metrics
+    baseline_window = max(30, baseline_k)  # 30 provides buffer
+
     config = TrackerConfig(
         storage_backend="sqlite" if use_sqlite else "memory",
         storage_path="experiments/results/temp.db" if use_sqlite else None,
-        baseline_window=10,
+        baseline_window=baseline_window,
         epsilon=1e-6,
         anomaly_threshold=2.0,
         random_seed=seed,

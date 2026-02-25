@@ -132,7 +132,8 @@ class TestDeterministicOrdering:
 
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=5,
+            baseline_window=20,
+            baseline_k=5,
             random_seed=42,
         )
 

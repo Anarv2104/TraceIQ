@@ -374,7 +374,8 @@ class TestTrackerIntegration:
         """InfluenceTracker.track_event should return canonical drift fields."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=5,
+            baseline_window=20,
+            baseline_k=5,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)

@@ -24,7 +24,7 @@ def mock_embedder() -> MockEmbedder:
 def scoring_engine() -> ScoringEngine:
     """Create a scoring engine with default settings."""
     return ScoringEngine(
-        baseline_window=5,
+        baseline_window=20,
         drift_threshold=0.3,
         influence_threshold=0.5,
     )
@@ -50,7 +50,8 @@ def tracker() -> InfluenceTracker:
     """Create an InfluenceTracker with mock embedder."""
     config = TrackerConfig(
         storage_backend="memory",
-        baseline_window=5,
+        baseline_window=20,
+        baseline_k=5,
         drift_threshold=0.3,
         influence_threshold=0.5,
         random_seed=42,
@@ -67,7 +68,8 @@ def sqlite_tracker(tmp_path: Path) -> InfluenceTracker:
     config = TrackerConfig(
         storage_backend="sqlite",
         storage_path=str(db_path),
-        baseline_window=5,
+        baseline_window=20,
+        baseline_k=5,
         drift_threshold=0.3,
         influence_threshold=0.5,
         random_seed=42,

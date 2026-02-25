@@ -89,22 +89,28 @@ class TestGoldenMetrics:
     def test_pr_chain_topology(self) -> None:
         """Chain A->B->C has spectral radius = 0 (nilpotent)."""
         # A->B->C with unit weights forms a nilpotent matrix
-        matrix = np.array([
-            [0, 1, 0],  # A -> B
-            [0, 0, 1],  # B -> C
-            [0, 0, 0],  # C -> nothing
-        ], dtype=np.float64)
+        matrix = np.array(
+            [
+                [0, 1, 0],  # A -> B
+                [0, 0, 1],  # B -> C
+                [0, 0, 0],  # C -> nothing
+            ],
+            dtype=np.float64,
+        )
         pr = compute_propagation_risk(matrix)
         # Nilpotent matrix has all eigenvalues = 0
         assert pr == pytest.approx(0.0, abs=1e-5)
 
     def test_pr_cycle_topology(self) -> None:
         """Cycle A->B->C->A with unit weights has spectral radius = 1."""
-        matrix = np.array([
-            [0, 1, 0],  # A -> B
-            [0, 0, 1],  # B -> C
-            [1, 0, 0],  # C -> A (forms cycle)
-        ], dtype=np.float64)
+        matrix = np.array(
+            [
+                [0, 1, 0],  # A -> B
+                [0, 0, 1],  # B -> C
+                [1, 0, 0],  # C -> A (forms cycle)
+            ],
+            dtype=np.float64,
+        )
         pr = compute_propagation_risk(matrix)
         # Permutation matrix has eigenvalues on unit circle
         assert pr == pytest.approx(1.0, rel=1e-5)
@@ -119,7 +125,8 @@ class TestGoldenTrackerSequence:
         def run_tracker():
             config = TrackerConfig(
                 storage_backend="memory",
-                baseline_window=5,
+                baseline_window=20,
+                baseline_k=5,
                 random_seed=42,
             )
             tracker = InfluenceTracker(config=config, use_mock_embedder=True)
@@ -147,7 +154,7 @@ class TestGoldenTrackerSequence:
         """During cold start: valid=False, alert=False."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=5,
+            baseline_window=30,
             baseline_k=20,
             random_seed=42,
         )
@@ -170,7 +177,8 @@ class TestGoldenTrackerSequence:
         """All event IDs should be unique."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=5,
+            baseline_window=20,
+            baseline_k=5,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)
@@ -194,7 +202,8 @@ class TestGoldenTrackerSequence:
         """Number of stored scores should equal number of events."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=5,
+            baseline_window=20,
+            baseline_k=5,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)
@@ -265,7 +274,8 @@ class TestGoldenEdgeCases:
         """Events where sender == receiver should still be tracked."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=5,
+            baseline_window=20,
+            baseline_k=5,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)
@@ -287,7 +297,8 @@ class TestGoldenEdgeCases:
         """Events with empty content should still be tracked."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=5,
+            baseline_window=20,
+            baseline_k=5,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)
@@ -307,7 +318,8 @@ class TestGoldenEdgeCases:
         """Events with unicode content should be handled."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=5,
+            baseline_window=20,
+            baseline_k=5,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)

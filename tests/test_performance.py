@@ -19,7 +19,8 @@ class TestPerformanceSanity:
         config = TrackerConfig(
             storage_backend="sqlite",
             storage_path=str(tmp_path / "perf.db"),
-            baseline_window=10,
+            baseline_window=30,
+            baseline_k=10,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)
@@ -36,13 +37,14 @@ class TestPerformanceSanity:
         tracker.close()
 
         assert elapsed < 60, f"10k events took {elapsed:.2f}s"
-        print(f"\n[Perf] 10k events: {elapsed:.2f}s ({10000/elapsed:.0f} events/sec)")
+        print(f"\n[Perf] 10k events: {elapsed:.2f}s ({10000 / elapsed:.0f} events/sec)")
 
     def test_1k_events_memory_storage(self, tmp_path: Path) -> None:
         """1k events with memory storage complete in under 10 seconds."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=10,
+            baseline_window=30,
+            baseline_k=10,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)
@@ -66,7 +68,8 @@ class TestPerformanceSanity:
         """Graph operations should scale reasonably with event count."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=10,
+            baseline_window=30,
+            baseline_k=10,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)
@@ -101,7 +104,8 @@ class TestPerformanceSanity:
         """Windowed PR computation should be fast."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=10,
+            baseline_window=30,
+            baseline_k=10,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)
@@ -138,7 +142,8 @@ class TestExportPerformance:
         """CSV export of 1k events should be fast."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=10,
+            baseline_window=30,
+            baseline_k=10,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)

@@ -6,7 +6,11 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
+
 from traceiq import InfluenceTracker, TrackerConfig
+
+pytestmark = pytest.mark.integration
 
 
 class TestTrackerToExportPipeline:
@@ -20,7 +24,8 @@ class TestTrackerToExportPipeline:
         config = TrackerConfig(
             storage_backend="sqlite",
             storage_path=str(db_path),
-            baseline_window=5,
+            baseline_window=20,
+            baseline_k=5,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)
@@ -44,7 +49,11 @@ class TestTrackerToExportPipeline:
         assert len(rows) == 10
         # These are the columns actually exported by export_combined_csv
         required_cols = [
-            "sender_id", "receiver_id", "influence_score", "drift_delta", "cold_start"
+            "sender_id",
+            "receiver_id",
+            "influence_score",
+            "drift_delta",
+            "cold_start",
         ]
         for col in required_cols:
             assert col in rows[0], f"Missing column: {col}"
@@ -55,7 +64,8 @@ class TestTrackerToExportPipeline:
 
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=5,
+            baseline_window=20,
+            baseline_k=5,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)
@@ -84,7 +94,7 @@ class TestTrackerToExportPipeline:
         """Verify no alerts during cold start period."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=5,
+            baseline_window=30,
             baseline_k=20,
             random_seed=42,
         )
@@ -108,7 +118,7 @@ class TestTrackerToExportPipeline:
         # Use small baseline_k and enough events to establish baseline per receiver
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=5,
+            baseline_window=20,
             baseline_k=5,  # Small cold start period
             random_seed=42,
         )
@@ -144,7 +154,8 @@ class TestPropagationRiskIntegration:
         """Windowed PR > 0 when chain has non-zero weights."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=3,
+            baseline_window=20,
+            baseline_k=3,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)
@@ -173,7 +184,7 @@ class TestPropagationRiskIntegration:
         """PR should generally increase with more interactions in a chain."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=3,
+            baseline_window=20,
             baseline_k=5,
             random_seed=42,
         )
@@ -212,7 +223,8 @@ class TestGraphIntegration:
         """Graph should build correctly from tracked events."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=5,
+            baseline_window=20,
+            baseline_k=5,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)
@@ -244,7 +256,8 @@ class TestGraphIntegration:
         """Top influencers should be ranked by outgoing influence weight sum."""
         config = TrackerConfig(
             storage_backend="memory",
-            baseline_window=5,
+            baseline_window=20,
+            baseline_k=5,
             random_seed=42,
         )
         tracker = InfluenceTracker(config=config, use_mock_embedder=True)

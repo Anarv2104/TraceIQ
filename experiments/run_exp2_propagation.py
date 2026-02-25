@@ -105,6 +105,19 @@ def run_experiment(
     tracker = create_tracker(seed)
     results = []
 
+    # Warmup phase to fill baseline before measurement
+    print("Warming up tracker baseline...")
+    warmup_count = 25  # > baseline_k (default 20)
+    for i in range(warmup_count):
+        for hop in range(len(agents) - 1):
+            tracker.track_event(
+                sender_id=agents[hop],
+                receiver_id=agents[hop + 1],
+                sender_content=f"Warmup {i} from {agents[hop]}",
+                receiver_content=f"Response {i} from {agents[hop + 1]}",
+            )
+    print(f"Warmup complete: {warmup_count * (len(agents) - 1)} events")
+
     print(f"Running {len(tasks)} trials with {len(agents)} agents...")
     print(f"Forward probability: {forward_prob}")
 
