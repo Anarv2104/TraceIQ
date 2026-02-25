@@ -16,6 +16,7 @@ tracker = InfluenceTracker(use_mock_embedder=True)
 config = TrackerConfig(
     storage_backend="memory",  # or "sqlite"
     baseline_window=10,
+    baseline_k=10,             # Must be <= baseline_window
     drift_threshold=0.3,
     influence_threshold=0.5,
 )

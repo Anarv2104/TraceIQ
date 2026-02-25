@@ -28,6 +28,7 @@ def test_real_agent_conversations():
         storage_backend="memory",
         embedding_model="all-MiniLM-L6-v2",
         baseline_window=5,
+        baseline_k=5,  # Must be <= baseline_window
         drift_threshold=0.25,
         influence_threshold=0.3,
     )
@@ -237,6 +238,7 @@ def test_idea_adoption():
     config = TrackerConfig(
         storage_backend="memory",
         baseline_window=3,
+        baseline_k=3,  # Must be <= baseline_window
         drift_threshold=0.2,
         influence_threshold=0.25,
     )

@@ -113,6 +113,7 @@ config = TrackerConfig(
     drift_threshold=0.3,      # Flag high_drift above this
     influence_threshold=0.5,  # Flag high_influence above this
     baseline_window=10,       # Rolling window size
+    baseline_k=10,            # Must be <= baseline_window
 )
 ```
 

@@ -12,6 +12,7 @@ from traceiq import InfluenceTracker, TrackerConfig
 config = TrackerConfig(
     storage_backend="memory",
     baseline_window=5,
+    baseline_k=5,  # Must be <= baseline_window
     drift_threshold=0.25,
     influence_threshold=0.3,
 )
@@ -254,6 +255,7 @@ general_config = TrackerConfig(
     drift_threshold=0.3,
     influence_threshold=0.5,
     baseline_window=10,
+    baseline_k=10,
 )
 
 # Rapidly changing domain: higher thresholds
@@ -261,6 +263,7 @@ dynamic_config = TrackerConfig(
     drift_threshold=0.5,       # Only flag major changes
     influence_threshold=0.7,   # Only flag strong influence
     baseline_window=5,         # Short window for adaptation
+    baseline_k=5,
 )
 ```
 

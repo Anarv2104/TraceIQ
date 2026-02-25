@@ -66,6 +66,7 @@ def simulate_infection_spread(
     config = TrackerConfig(
         storage_backend="memory",
         baseline_window=5,
+        baseline_k=5,  # Must be <= baseline_window
         drift_threshold=0.3,
         influence_threshold=0.4,
         random_seed=seed,

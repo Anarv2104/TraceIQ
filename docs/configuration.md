@@ -19,6 +19,7 @@ config = TrackerConfig(
 
     # Scoring
     baseline_window=10,
+    baseline_k=10,  # Must be <= baseline_window
     epsilon=1e-6,
     anomaly_threshold=2.0,
 )
