@@ -138,7 +138,7 @@ class TestGoldenTrackerSequence:
             return results
 
         r1, r2 = run_tracker(), run_tracker()
-        for (a1, b1, c1), (a2, b2, c2) in zip(r1, r2):
+        for (a1, b1, c1), (a2, b2, c2) in zip(r1, r2, strict=True):
             assert a1 == pytest.approx(a2)
             assert b1 == pytest.approx(b2)
             assert c1 == c2
