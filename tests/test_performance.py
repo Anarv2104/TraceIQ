@@ -59,7 +59,8 @@ class TestPerformanceSanity:
         tracker.close()
 
         assert elapsed < 10, f"1k events took {elapsed:.2f}s"
-        print(f"\n[Perf] 1k events (memory): {elapsed:.2f}s ({1000/elapsed:.0f} events/sec)")
+        rate = 1000 / elapsed
+        print(f"\n[Perf] 1k events (memory): {elapsed:.2f}s ({rate:.0f} events/sec)")
 
     def test_graph_operations_scale(self, tmp_path: Path) -> None:
         """Graph operations should scale reasonably with event count."""
@@ -94,7 +95,7 @@ class TestPerformanceSanity:
 
         # Graph operations should be fast
         assert graph_time < 5, f"Graph operations took {graph_time:.2f}s"
-        print(f"\n[Perf] Graph ops ({num_events} events, {num_agents} agents): {graph_time:.3f}s")
+        print(f"\n[Perf] Graph ops: {graph_time:.3f}s")
 
     def test_windowed_pr_computation(self, tmp_path: Path) -> None:
         """Windowed PR computation should be fast."""
@@ -119,8 +120,8 @@ class TestPerformanceSanity:
 
         # Time windowed PR computation
         start = time.time()
-        for window_size in [10, 20, 50, 100]:
-            _ = tracker.graph.compute_windowed_pr(events, scores, window_size=window_size)
+        for ws in [10, 20, 50, 100]:
+            _ = tracker.graph.compute_windowed_pr(events, scores, window_size=ws)
         pr_time = time.time() - start
 
         tracker.close()

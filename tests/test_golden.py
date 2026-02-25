@@ -131,7 +131,9 @@ class TestGoldenTrackerSequence:
                     sender_content=f"Msg {i}",
                     receiver_content=f"Resp {i}",
                 )
-                results.append((r["influence_score"], r["drift_delta"], r["cold_start"]))
+                results.append(
+                    (r["influence_score"], r["drift_delta"], r["cold_start"])
+                )
             tracker.close()
             return results
 

@@ -6,8 +6,6 @@ import csv
 import json
 from pathlib import Path
 
-import pytest
-
 from traceiq import InfluenceTracker, TrackerConfig
 
 
@@ -45,7 +43,9 @@ class TestTrackerToExportPipeline:
 
         assert len(rows) == 10
         # These are the columns actually exported by export_combined_csv
-        required_cols = ["sender_id", "receiver_id", "influence_score", "drift_delta", "cold_start"]
+        required_cols = [
+            "sender_id", "receiver_id", "influence_score", "drift_delta", "cold_start"
+        ]
         for col in required_cols:
             assert col in rows[0], f"Missing column: {col}"
 
@@ -98,8 +98,8 @@ class TestTrackerToExportPipeline:
                 receiver_content=f"Response {i}",
             )
             if i < 20:
-                assert result["valid"] is False, f"Event {i} should be invalid (cold start)"
-                assert result["alert"] is False, f"Event {i} should have no alert (cold start)"
+                assert result["valid"] is False, f"Event {i} should be invalid"
+                assert result["alert"] is False, f"Event {i} should have no alert"
 
         tracker.close()
 
@@ -128,13 +128,13 @@ class TestTrackerToExportPipeline:
 
         # During cold start (first baseline_k events), metrics should be invalid
         for i in range(5):
-            assert results[i]["valid"] is False, f"Event {i} should be invalid (cold start)"
+            assert results[i]["valid"] is False, f"Event {i} should be invalid"
 
         # After cold start, we expect metrics to become valid eventually
         # The exact timing depends on baseline accumulation per receiver
         valid_count = sum(1 for r in results if r["valid"] is True)
         # After 30 events with baseline_k=5, many should be valid
-        assert valid_count > 0, f"Expected some valid events after cold start, got {valid_count}"
+        assert valid_count > 0, f"Expected valid events, got {valid_count}"
 
 
 class TestPropagationRiskIntegration:
@@ -163,7 +163,7 @@ class TestPropagationRiskIntegration:
         # Use tracker methods to get events/scores
         events = tracker.get_events()
         scores = tracker.get_scores()
-        pr = tracker.graph.compute_windowed_pr(events, scores, window_size=10)
+        _ = tracker.graph.compute_windowed_pr(events, scores, window_size=10)
 
         # Should have edges
         assert len(tracker.graph._edge_iqx) > 0, "Graph should have edges"
@@ -195,7 +195,8 @@ class TestPropagationRiskIntegration:
             events = tracker.get_events()
             scores = tracker.get_scores()
             if len(events) >= 3:
-                pr = tracker.graph.compute_windowed_pr(events, scores, window_size=min(len(events), 20))
+                window = min(len(events), 20)
+                pr = tracker.graph.compute_windowed_pr(events, scores, window)
                 pr_values.append(pr)
 
         tracker.close()
