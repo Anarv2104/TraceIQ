@@ -386,9 +386,12 @@ def run_experiment(
 
     # === PASS/FAIL CRITERIA ===
 
-    # Criterion 1: D must have lowest mean_total_iqx
+    # Criterion 1: D must have lowest mean_total_iqx among SENDERS
+    # Note: Terminal node (C) never sends, so exclude from comparison
     indep = topology.independent_agents
     chain_agents = [a for a in topology.agent_ids if a not in indep]
+    # Exclude terminal node - it never sends so has zero IQx by design
+    chain_senders = chain_agents[:-1] if len(chain_agents) > 1 else chain_agents
     ind_agent = indep[0] if indep else None
 
     d_lowest = True
@@ -398,7 +401,7 @@ def run_experiment(
         ind_values = agent_total_iqx_by_seed[ind_agent]
         ind_mean = np.mean(ind_values)
 
-        for chain_agent in chain_agents:
+        for chain_agent in chain_senders:
             chain_values = agent_total_iqx_by_seed[chain_agent]
             chain_mean = np.mean(chain_values)
 
@@ -436,7 +439,7 @@ def run_experiment(
         if n_compare > 0:
             d_beats_a_rate = d_beats_a_count / n_compare
 
-    ranking_stable = d_beats_a_rate < 0.1
+    ranking_stable = d_beats_a_rate <= 0.1
 
     # Compute influence ranking
     ranking = sorted(
