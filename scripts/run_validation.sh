@@ -69,8 +69,8 @@ find_summary_json() {
         if [[ -d "$dir" ]]; then
             while IFS= read -r -d '' f; do
                 local mtime
-                mtime=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null)
-                if [[ "$mtime" -ge "$start_time" && "$mtime" -gt "$newest_time" ]]; then
+                mtime=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo "0")
+                if [[ -n "$mtime" && "$mtime" -ge "$start_time" && "$mtime" -gt "$newest_time" ]]; then
                     newest="$f"
                     newest_time="$mtime"
                 fi
