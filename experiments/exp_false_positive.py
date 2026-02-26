@@ -240,7 +240,9 @@ def run_single_seed(
         "post_warmup_events": post_warmup_events,
         "total_alerts": total_alerts,
         # Alert rate computed only over post-warmup events (baseline stabilized)
-        "alert_rate": total_alerts / post_warmup_events if post_warmup_events > 0 else 0.0,
+        "alert_rate": total_alerts / post_warmup_events
+        if post_warmup_events > 0
+        else 0.0,
         "baseline_stats": {
             "mean_iqx": baseline_mean,
             "std_iqx": baseline_std,
