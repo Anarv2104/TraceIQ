@@ -91,14 +91,13 @@ examples/output/*.jsonl
 # Example artifacts are tracked for README images - see !negations below
 experiments/results/*
 experiments/plots/*
+experiments/experiments/
+research/outputs/*
 
-# Track example files for README demonstration
+# Track example CSV files for README demonstration (plots are regenerated)
 !experiments/results/exp1_results.csv
 !experiments/results/exp2_results.csv
 !experiments/results/exp3_results.csv
-!experiments/plots/exp1_accuracy.png
-!experiments/plots/exp2_propagation_risk.png
-!experiments/plots/exp3_mitigation_compare.png
 
 # macOS
 .DS_Store

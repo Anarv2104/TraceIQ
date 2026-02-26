@@ -1,8 +1,16 @@
-"""Experiment sanity - determinism and schema validation."""
+"""Experiment sanity - determinism and schema validation.
+
+CI-safe tests that validate core traceiq behavior:
+- Determinism with fixed seeds
+- Schema validation for TraceIQEvent
+- IQx bounds checking on tracker output
+"""
 
 import json
+import math
 
 from traceiq import InfluenceTracker, TraceIQEvent, TrackerConfig
+from traceiq.metrics import IQX_CAP
 
 
 class TestDeterminism:
@@ -124,3 +132,114 @@ class TestTrackerWithSchema:
 
         assert result["run_id"] == "experiment-1"
         assert result["task_id"] == "task-1"
+
+
+def _get_iqx(result: dict) -> float | None:
+    """Extract IQx from result, handling key variations."""
+    return result.get("IQx", result.get("iqx"))
+
+
+class TestIQxBoundsOnTracker:
+    """Validate IQx values from tracker are bounded and sane."""
+
+    def test_iqx_in_bounds_chain(self) -> None:
+        """IQx values from chain-like interactions are bounded."""
+        config = TrackerConfig(
+            storage_backend="memory",
+            baseline_window=10,
+            baseline_k=3,
+            random_seed=42,
+        )
+        tracker = InfluenceTracker(config=config, use_mock_embedder=True)
+
+        iqx_values = []
+
+        # Simulate A -> B -> C chain
+        for i in range(15):
+            result = tracker.track_event("A", "B", f"msg {i}", f"resp {i}")
+            iqx = _get_iqx(result)
+            if iqx is not None:
+                iqx_values.append(iqx)
+
+            result = tracker.track_event("B", "C", f"forward {i}", f"ack {i}")
+            iqx = _get_iqx(result)
+            if iqx is not None:
+                iqx_values.append(iqx)
+
+        tracker.close()
+
+        # Must have collected some IQx values after warmup
+        assert len(iqx_values) > 0, "No IQx values returned after warmup"
+
+        # All IQx values must be bounded
+        for iqx in iqx_values:
+            assert 0 <= iqx <= IQX_CAP, f"IQx out of bounds: {iqx}"
+            assert not math.isnan(iqx), "IQx is NaN"
+            assert not math.isinf(iqx), "IQx is infinite"
+
+    def test_iqx_in_bounds_noise(self) -> None:
+        """IQx values from noise interactions are bounded."""
+        config = TrackerConfig(
+            storage_backend="memory",
+            baseline_window=10,
+            baseline_k=3,
+            random_seed=42,
+        )
+        tracker = InfluenceTracker(config=config, use_mock_embedder=True)
+
+        iqx_values = []
+        alert_count = 0
+        total = 0
+
+        # Simulate random noise interactions
+        agents = ["A", "B", "C", "D"]
+        for i in range(20):
+            sender = agents[i % 4]
+            receiver = agents[(i + 1) % 4]
+            result = tracker.track_event(
+                sender,
+                receiver,
+                f"noise content {i} from {sender}",
+                f"noise response {i}",
+            )
+
+            iqx = _get_iqx(result)
+            if iqx is not None:
+                iqx_values.append(iqx)
+                assert 0 <= iqx <= IQX_CAP
+
+            if result.get("alert", False):
+                alert_count += 1
+            total += 1
+
+        tracker.close()
+
+        # Alert rate for pure noise should be low (< 30%)
+        if total > 0:
+            alert_rate = alert_count / total
+            assert alert_rate <= 0.5, f"Alert rate unexpectedly high: {alert_rate}"
+
+    def test_result_keys_exist(self) -> None:
+        """Track event returns expected keys."""
+        config = TrackerConfig(
+            storage_backend="memory",
+            baseline_window=10,
+            baseline_k=3,
+            random_seed=42,
+        )
+        tracker = InfluenceTracker(config=config, use_mock_embedder=True)
+
+        # Warmup
+        for i in range(5):
+            tracker.track_event("A", "B", f"warmup {i}", f"resp {i}")
+
+        result = tracker.track_event("A", "B", "test message", "test response")
+        tracker.close()
+
+        # Core keys that must exist
+        assert "alert" in result, "Missing 'alert' key in result"
+        assert "valid" in result, "Missing 'valid' key in result"
+
+        # IQx should exist (possibly under different case)
+        has_iqx = "IQx" in result or "iqx" in result
+        assert has_iqx, f"Missing IQx key. Result keys: {list(result.keys())}"

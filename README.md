@@ -2,7 +2,7 @@
 
 Measure AI-to-AI influence in multi-agent systems.
 
-[![PyPI version](https://img.shields.io/pypi/v/traceiq.svg?cacheSeconds=60&v=0.3.6)](https://pypi.org/project/traceiq/)
+[![PyPI version](https://img.shields.io/pypi/v/traceiq.svg?cacheSeconds=60&v=0.4.3)](https://pypi.org/project/traceiq/)
 [![Python versions](https://img.shields.io/pypi/pyversions/traceiq.svg?cacheSeconds=60)](https://pypi.org/project/traceiq/)
 [![License](https://img.shields.io/pypi/l/traceiq.svg?cacheSeconds=60)](https://pypi.org/project/traceiq/)
 
@@ -135,6 +135,31 @@ For reliable metrics:
 - **Check validity before alerting**: Use `result["valid"]` to avoid cold-start noise
 - **Calibrate thresholds**: Default values (Z > 2.0, etc.) need tuning per environment
 - **Interpret PR carefully**: Propagation Risk is a relative indicator; establish baseline values for your system
+
+---
+
+## Releasing TraceIQ
+
+To release a new version:
+
+1. Update version in `pyproject.toml`
+2. Commit the change:
+   ```bash
+   git add pyproject.toml
+   git commit -m "chore: bump version to X.Y.Z"
+   ```
+3. Create and push the tag:
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+4. GitHub Actions automatically:
+   - Runs full test suite
+   - Builds the package
+   - Publishes to PyPI
+   - Creates GitHub Release
+
+For release candidates, use tags like `v0.4.0rc1` (published to TestPyPI).
 
 ---
 
