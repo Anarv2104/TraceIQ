@@ -1,17 +1,60 @@
-name: Heavy Experiments
+name: Experiments
 
 on:
+  push:
+  pull_request:
   workflow_dispatch:
     inputs:
-      experiments:
-        description: "all, simulation, ablation, sensitivity"
-        default: "all"
+      mode:
+        description: "smoke or proof"
+        default: "proof"
+        type: choice
+        options:
+          - smoke
+          - proof
 
 permissions:
   contents: read
 
 jobs:
-  experiments:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Create output directories
+        run: mkdir -p experiments/results experiments/plots research/outputs
+
+      - name: Lint check
+        run: |
+          ruff check src/traceiq tests experiments/topologies.py experiments/exp_*.py
+          ruff format --check src/traceiq tests experiments/topologies.py experiments/exp_*.py
+
+      - name: Run smoke validation
+        run: |
+          chmod +x scripts/run_validation.sh
+          ./scripts/run_validation.sh smoke
+
+      - name: Upload smoke results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-results
+          path: |
+            experiments/results/**/summary.json
+            research/outputs/**/summary.json
+
+  proof:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'proof'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -20,32 +63,25 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
       - name: Install dependencies
         run: pip install -e ".[all,dev]"
 
       - name: Create output directories
-        run: mkdir -p research/outputs experiments/results
+        run: mkdir -p experiments/results experiments/plots research/outputs
 
-      - name: Run experiments
+      - name: Run proof validation
         run: |
-          if [ "${{ inputs.experiments }}" = "all" ] || [ "${{ inputs.experiments }}" = "simulation" ]; then
-            echo "Running synthetic simulation..."
-            cd research && python synthetic_simulation.py && cd ..
-          fi
-          if [ "${{ inputs.experiments }}" = "all" ] || [ "${{ inputs.experiments }}" = "ablation" ]; then
-            echo "Running ablation study..."
-            cd research && python ablation_study.py && cd ..
-          fi
-          if [ "${{ inputs.experiments }}" = "all" ] || [ "${{ inputs.experiments }}" = "sensitivity" ]; then
-            echo "Running sensitivity analysis..."
-            cd research && python sensitivity_analysis.py && cd ..
-          fi
+          chmod +x scripts/run_validation.sh
+          ./scripts/run_validation.sh proof
 
-      - name: Upload experiment results
+      - name: Upload proof results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: experiment-results
+          name: proof-results
           path: |
-            research/outputs/
             experiments/results/
+            experiments/plots/
+            research/outputs/
