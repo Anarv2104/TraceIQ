@@ -311,10 +311,8 @@ def run_experiment(
     # === PASS/FAIL CRITERIA ===
 
     # Expected false alarm rate for Z > 2.0 under normal distribution: ~4.6%
-    # Embedding-based IQx often has heavier tails (excess kurtosis), so we use
-    # 25% as a realistic threshold that accounts for non-normality while still
-    # bounding false positives to a reasonable level.
-    expected_false_alarm_rate = 0.25
+    # We use 10% as a conservative threshold to account for non-normality
+    expected_false_alarm_rate = 0.10
 
     # Criterion 1: Mean IQx should be low (< 2.0, indicating no systematic influence)
     # Derived from: IQx = drift / baseline, and noise should have drift ≈ baseline

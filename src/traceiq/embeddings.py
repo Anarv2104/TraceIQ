@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
+# Token pattern: alphanumeric + underscore (keeps ACTION_LABEL_X meaningful)
+_TOKEN_RE = re.compile(r"[a-z0-9_]+")
+
+
+def _stable_hash(token: str) -> int:
+    """Generate stable hash across runs/platforms (unlike Python's hash())."""
+    h = hashlib.sha256(token.encode("utf-8")).digest()
+    return int.from_bytes(h[:8], "little", signed=False)
 
 
 class EmbeddingResult:
@@ -160,17 +170,22 @@ class SentenceTransformerEmbedder:
 
 
 class MockEmbedder:
-    """Mock embedder for testing without sentence-transformers."""
+    """Deterministic, lightweight embedder for CI/tests.
+
+    IMPORTANT:
+    - Not "semantic" like real transformers
+    - But *token-sensitive*: similar text -> similar vectors
+    - Deterministic across platforms/runs (uses sha256-based stable hashing)
+    """
 
     def __init__(
         self,
         embedding_dim: int = 384,
-        seed: int | None = None,
+        seed: int | None = None,  # Kept for API compat, not used
         max_content_length: int = 5000,
     ) -> None:
         self.embedding_dim = embedding_dim
         self.max_content_length = max_content_length
-        self._rng = np.random.default_rng(seed)
         self._cache: dict[str, NDArray[np.float32]] = {}
         self._cache_hits = 0
         self._cache_misses = 0
@@ -182,8 +197,31 @@ class MockEmbedder:
         hash_key = hashlib.sha256(truncated.encode("utf-8")).hexdigest()
         return hash_key, was_truncated
 
+    def _embed_text(self, text: str) -> NDArray[np.float32]:
+        """Generate token-sensitive embedding via feature hashing."""
+        v = np.zeros(self.embedding_dim, dtype=np.float32)
+
+        tokens = _TOKEN_RE.findall((text or "").lower())
+        if not tokens:
+            return v
+
+        # Feature hashing over tokens -> fixed-size vector
+        for tok in tokens:
+            h = _stable_hash(tok)
+            idx = h % self.embedding_dim
+            # Signed hashing to reduce collision bias
+            sign = 1.0 if ((h >> 63) & 1) == 0 else -1.0
+            v[idx] += sign
+
+        # L2 normalize to keep distances stable
+        norm = float(np.linalg.norm(v))
+        if norm > 0:
+            v /= norm
+
+        return v
+
     def embed(self, content: str) -> NDArray[np.float32]:
-        """Generate deterministic pseudo-random embedding based on content hash."""
+        """Generate deterministic token-sensitive embedding."""
         result = self.embed_with_info(content)
         return result.embedding
 
@@ -195,12 +233,9 @@ class MockEmbedder:
             return EmbeddingResult(self._cache[hash_key].copy(), was_truncated)
 
         self._cache_misses += 1
-        # Use hash to seed a local RNG for deterministic output
-        hash_int = int(hash_key[:16], 16)
-        local_rng = np.random.default_rng(hash_int)
-        embedding = local_rng.random(self.embedding_dim).astype(np.float32)
-        # Normalize to unit vector
-        embedding = embedding / np.linalg.norm(embedding)
+        # Truncate content before embedding
+        truncated = content[: self.max_content_length] if was_truncated else content
+        embedding = self._embed_text(truncated)
         self._cache[hash_key] = embedding
         return EmbeddingResult(embedding.copy(), was_truncated)
 

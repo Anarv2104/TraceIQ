@@ -71,12 +71,18 @@ class ScoringEngine:
         influence_threshold: float = 0.5,
         epsilon: float = 1e-6,
         anomaly_threshold: float = 2.0,
+        alert_quantile: float = 0.95,
+        alert_quantile_floor: float = 2.0,
+        alert_calibration_window: int = 200,
     ) -> None:
         self.baseline_window = baseline_window
         self.drift_threshold = drift_threshold
         self.influence_threshold = influence_threshold
         self.epsilon = epsilon
         self.anomaly_threshold = anomaly_threshold
+        self.alert_quantile = alert_quantile
+        self.alert_quantile_floor = alert_quantile_floor
+        self.alert_calibration_window = alert_calibration_window
 
         # Per-receiver baseline tracking
         # Maps receiver_id -> list of recent embeddings
@@ -91,6 +97,9 @@ class ScoringEngine:
         # Canonical state tracking: previous receiver embedding per receiver
         # This enables computing IEEE canonical drift: ||s(t+) - s(t-)||
         self._last_receiver_state: dict[str, NDArray[np.float32]] = {}
+
+        # Quantile-based alert calibration: per-receiver abs(z) history
+        self._receiver_abs_z_history: dict[str, list[float]] = {}
 
     def _get_baseline(self, receiver_id: str) -> NDArray[np.float32] | None:
         """Get mean baseline embedding for a receiver (for proxy drift)."""
@@ -245,11 +254,44 @@ class ScoringEngine:
 
             # Compute robust Z-score using MAD (if we have valid IQx and history)
             iqx_history = self._receiver_iqx_history.get(receiver_id, [])
-            if iqx is not None and len(iqx_history) >= MIN_BASELINE_SAMPLES:
+
+            # Warmup gate: do NOT alert until we have a stable baseline.
+            # MIN_BASELINE_SAMPLES is the bare minimum to compute stats; alerting needs more.
+            min_alert_samples = max(10, 2 * MIN_BASELINE_SAMPLES)
+
+            if iqx is not None and len(iqx_history) >= min_alert_samples:
                 z_score = compute_z_score_robust(iqx, iqx_history, self.epsilon)
-                if abs(z_score) > self.anomaly_threshold:
-                    alert_flag = True
-                    flags.append("anomaly_alert")
+
+                # Update abs(z) history for quantile calibration
+                if receiver_id not in self._receiver_abs_z_history:
+                    self._receiver_abs_z_history[receiver_id] = []
+                self._receiver_abs_z_history[receiver_id].append(abs(z_score))
+                # Keep bounded by calibration window
+                if (
+                    len(self._receiver_abs_z_history[receiver_id])
+                    > self.alert_calibration_window
+                ):
+                    self._receiver_abs_z_history[receiver_id] = (
+                        self._receiver_abs_z_history[receiver_id][
+                            -self.alert_calibration_window :
+                        ]
+                    )
+
+                # Alert only if enough calibration samples
+                abs_z_history = self._receiver_abs_z_history[receiver_id]
+                if len(abs_z_history) >= min_alert_samples:
+                    # Compute dynamic threshold from quantile
+                    dynamic_threshold = float(
+                        np.percentile(abs_z_history, self.alert_quantile * 100)
+                    )
+                    dynamic_threshold = max(dynamic_threshold, self.alert_quantile_floor)
+                    if abs(z_score) > dynamic_threshold:
+                        alert_flag = True
+                        flags.append("anomaly_alert")
+                # else: still in calibration phase, suppress alert
+            else:
+                # Flag that alerting was suppressed due to warmup
+                flags.append("baseline_warmup")
 
             # Update histories for future computations (use canonical drift if available)
             drift_for_history = (
@@ -319,6 +361,8 @@ class ScoringEngine:
             del self._receiver_iqx_history[receiver_id]
         if receiver_id in self._last_receiver_state:
             del self._last_receiver_state[receiver_id]
+        if receiver_id in self._receiver_abs_z_history:
+            del self._receiver_abs_z_history[receiver_id]
 
     def reset_all_baselines(self) -> None:
         """Reset all baselines and state tracking."""
@@ -326,6 +370,7 @@ class ScoringEngine:
         self._receiver_drift_history.clear()
         self._receiver_iqx_history.clear()
         self._last_receiver_state.clear()
+        self._receiver_abs_z_history.clear()
 
     def get_receiver_drift_history(self, receiver_id: str) -> list[float]:
         """Get drift history for a receiver (for analysis/export)."""

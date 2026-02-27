@@ -43,7 +43,9 @@ def compute_drift_l2(
 
 
 # Constants for numerical stability
-MIN_BASELINE_SAMPLES = 3  # Minimum samples before computing IQx
+MIN_BASELINE_SAMPLES = (
+    3  # Minimum history samples before computing baseline-based stats (e.g., z-score)
+)
 IQX_CAP = 25.0  # Maximum IQx value (prevents explosions)
 BASELINE_FLOOR = 0.05  # Minimum baseline denominator
 MAD_CONSTANT = 0.6745  # Makes MAD consistent with std for normal distribution
@@ -271,8 +273,10 @@ def compute_z_score_robust(
     """
     if len(values) < 2:
         return 0.0
+
     median = float(np.median(values))
-    mad = rolling_mad(values)
+    mad = float(rolling_mad(values))
+    mad = max(mad, 1e-3)  # Absolute floor to prevent divide-by-zero
     return MAD_CONSTANT * (iqx - median) / (mad + epsilon)
 
 
