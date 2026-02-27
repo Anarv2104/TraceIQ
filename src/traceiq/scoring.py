@@ -284,7 +284,9 @@ class ScoringEngine:
                     dynamic_threshold = float(
                         np.percentile(abs_z_history, self.alert_quantile * 100)
                     )
-                    dynamic_threshold = max(dynamic_threshold, self.alert_quantile_floor)
+                    dynamic_threshold = max(
+                        dynamic_threshold, self.alert_quantile_floor
+                    )
                     if abs(z_score) > dynamic_threshold:
                         alert_flag = True
                         flags.append("anomaly_alert")
